@@ -12,15 +12,18 @@ jobs:
     name: Типы, тесты и frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: 10.14.0
-      - uses: actions/setup-node@v4
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile=false
+      - name: Установить зависимости
+        run: pnpm install --frozen-lockfile=false
       - name: Проверить типы
         run: pnpm --filter @filescope/desktop typecheck
       - name: Запустить unit-тесты
@@ -33,15 +36,18 @@ jobs:
     needs: quality
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: 10.14.0
-      - uses: actions/setup-node@v4
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Установить Rust
+        uses: dtolnay/rust-toolchain@stable
       - name: Установить зависимости
         run: pnpm install --frozen-lockfile=false
       - name: Собрать desktop-приложение
