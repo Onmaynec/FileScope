@@ -18,7 +18,7 @@ test('пользователь завершает onboarding и открывае
   await page.getByRole('button', { name: 'Открыть FileScope' }).click();
 
   await expect(page.getByRole('heading', { name: 'Проверка ссылок, файлов и архивов до запуска' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Основная навигация' })).toBeVisible();
+  await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
 });
 
 test('демонстрационный отчёт открывается без реального анализа', async ({ page }) => {
