@@ -33,10 +33,10 @@ pub fn run() {
             )?;
 
             let app_handle = app.handle().clone();
-            TrayIconBuilder::new()
+            let mut tray_builder = TrayIconBuilder::new()
                 .tooltip("FileScope")
                 .menu(&menu)
-                .on_menu_event(move |_tray, event| match event.id.as_ref() {
+                .on_menu_event(move |_app, event| match event.id.as_ref() {
                     "open" => show_main_window(&app_handle),
                     "scan_link" => {
                         show_main_window(&app_handle);
@@ -52,8 +52,12 @@ pub fn run() {
                     }
                     "quit" => app_handle.exit(0),
                     _ => {}
-                })
-                .build(app)?;
+                });
+
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            tray_builder.build(app)?;
 
             Ok(())
         })
