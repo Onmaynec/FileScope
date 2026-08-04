@@ -40,7 +40,7 @@ export async function bindNativeNavigation(onNavigate: (page: string) => void, o
   const listeners: UnlistenFn[] = [];
   try {
     listeners.push(await listen<string>('filescope:navigate', (event) => onNavigate(event.payload)));
-    listeners.push(await listen('filescope:select-file', onSelectFile));
+    listeners.push(await listen('filescope:select-file', () => onSelectFile()));
   } catch {
     // В браузерном режиме нативные события недоступны — это ожидаемо.
   }
