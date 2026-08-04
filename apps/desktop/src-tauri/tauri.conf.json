@@ -12,12 +12,16 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "FileScope",
         "width": 1280,
         "height": 820,
         "minWidth": 1050,
         "minHeight": 700,
         "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
         "fullscreen": false,
         "center": true
       }
@@ -29,12 +33,15 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "FileScope Team",
     "category": "Utility",
     "shortDescription": "Проверка ссылок, файлов и архивов до запуска",
     "longDescription": "FileScope — desktop-приложение для понятной локальной проверки объектов до запуска.",
     "windows": {
       "nsis": {
-        "installMode": "perUser"
+        "installMode": "perUser",
+        "languages": ["Russian"],
+        "displayLanguageSelector": false
       }
     }
   }
