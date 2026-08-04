@@ -17,6 +17,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть FileScope", true, None::<&str>)?;
             let scan_link = MenuItem::with_id(app, "scan_link", "Проверить ссылку", true, None::<&str>)?;
