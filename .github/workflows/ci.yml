@@ -14,14 +14,15 @@ jobs:
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
-      - name: Установить pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
       - name: Установить Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Активировать pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          pnpm --version
       - name: Установить зависимости
         run: pnpm install --frozen-lockfile=false
       - name: Проверить типы
@@ -38,14 +39,16 @@ jobs:
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
-      - name: Установить pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
       - name: Установить Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Активировать pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          pnpm --version
       - name: Установить Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Установить зависимости
