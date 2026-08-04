@@ -1,0 +1,32 @@
+name: Проверка проекта
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+jobs:
+  frontend:
+    name: Lint, типы, тесты и сборка
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Установить зависимости
+        run: pnpm install --frozen-lockfile=false
+      - name: Проверить типы
+        run: pnpm --filter @filescope/desktop typecheck
+      - name: Запустить тесты
+        run: pnpm --filter @filescope/desktop test
+      - name: Собрать frontend
+        run: pnpm --filter @filescope/desktop build
