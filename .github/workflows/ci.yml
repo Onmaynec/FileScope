@@ -14,23 +14,58 @@ jobs:
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
-      - name: Установить Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Активировать pnpm
+
+      - name: Выполнить проверки и записать диагностику
+        shell: bash
         run: |
-          corepack enable
-          corepack prepare pnpm@10.14.0 --activate
-          pnpm --version
-      - name: Установить зависимости
-        run: pnpm install --frozen-lockfile=false
-      - name: Проверить типы
-        run: pnpm --filter @filescope/desktop typecheck
-      - name: Запустить unit-тесты
-        run: pnpm --filter @filescope/desktop test
-      - name: Собрать frontend
-        run: pnpm --filter @filescope/desktop build
+          set +e
+          : > ci-diagnostics.txt
+
+          echo '=== Environment ===' >> ci-diagnostics.txt
+          node --version >> ci-diagnostics.txt 2>&1
+          npm --version >> ci-diagnostics.txt 2>&1
+
+          echo '=== Install pnpm ===' >> ci-diagnostics.txt
+          npm install --global pnpm@10.14.0 >> ci-diagnostics.txt 2>&1
+          PNPM_SETUP=$?
+          pnpm --version >> ci-diagnostics.txt 2>&1
+
+          echo '=== Install dependencies ===' >> ci-diagnostics.txt
+          pnpm install --frozen-lockfile=false >> ci-diagnostics.txt 2>&1
+          INSTALL=$?
+
+          echo '=== Typecheck ===' >> ci-diagnostics.txt
+          pnpm --filter @filescope/desktop typecheck >> ci-diagnostics.txt 2>&1
+          TYPECHECK=$?
+
+          echo '=== Unit tests ===' >> ci-diagnostics.txt
+          pnpm --filter @filescope/desktop test >> ci-diagnostics.txt 2>&1
+          TESTS=$?
+
+          echo '=== Frontend build ===' >> ci-diagnostics.txt
+          pnpm --filter @filescope/desktop build >> ci-diagnostics.txt 2>&1
+          BUILD=$?
+
+          printf 'PNPM_SETUP=%s\nINSTALL=%s\nTYPECHECK=%s\nTESTS=%s\nBUILD=%s\n' \
+            "$PNPM_SETUP" "$INSTALL" "$TYPECHECK" "$TESTS" "$BUILD" | tee ci-status.txt
+
+      - name: Сохранить диагностику
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileScope-CI-Diagnostics
+          path: |
+            ci-diagnostics.txt
+            ci-status.txt
+          if-no-files-found: error
+
+      - name: Завершить job с корректным статусом
+        shell: bash
+        run: |
+          cat ci-status.txt
+          if grep -Eq '=(1|2|3|4|5|6|7|8|9|[1-9][0-9]+)$' ci-status.txt; then
+            exit 1
+          fi
 
   windows:
     name: Windows x64 и NSIS
