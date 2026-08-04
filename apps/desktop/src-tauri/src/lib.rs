@@ -23,11 +23,12 @@ pub fn run() {
             let select_file = MenuItem::with_id(app, "select_file", "Выбрать файл", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
             let updates = MenuItem::with_id(app, "updates", "Проверить обновления", true, None::<&str>)?;
-            let separator = PredefinedMenuItem::separator(app)?;
+            let first_separator = PredefinedMenuItem::separator(app)?;
+            let second_separator = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
-                &[&open, &separator, &scan_link, &select_file, &settings, &updates, &separator, &quit],
+                &[&open, &first_separator, &scan_link, &select_file, &settings, &updates, &second_separator, &quit],
             )?;
 
             let app_handle = app.handle().clone();
@@ -44,11 +45,7 @@ pub fn run() {
                         show_main_window(&app_handle);
                         let _ = app_handle.emit("filescope:select-file", ());
                     }
-                    "settings" => {
-                        show_main_window(&app_handle);
-                        let _ = app_handle.emit("filescope:navigate", "settings");
-                    }
-                    "updates" => {
+                    "settings" | "updates" => {
                         show_main_window(&app_handle);
                         let _ = app_handle.emit("filescope:navigate", "settings");
                     }
