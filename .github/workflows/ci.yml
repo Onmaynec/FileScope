@@ -76,7 +76,7 @@ jobs:
 
       - name: Проверить Rust
         working-directory: apps/desktop/src-tauri
-        run: cargo check --locked=false
+        run: cargo check
 
       - name: Собрать desktop-приложение
         run: pnpm --filter @filescope/desktop build:desktop
