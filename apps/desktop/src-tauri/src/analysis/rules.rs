@@ -52,9 +52,11 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
         .collect::<Vec<_>>();
 
     let has = |candidates: &[&str]| {
-        candidates
-            .iter()
-            .any(|candidate| names.iter().any(|name| name == &candidate.to_ascii_lowercase()))
+        candidates.iter().any(|candidate| {
+            names
+                .iter()
+                .any(|name| name == &candidate.to_ascii_lowercase())
+        })
     };
 
     let allocation = has(&["VirtualAllocEx"]);
@@ -82,7 +84,9 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
         indicator.description = "Файл импортирует API получения данных из сети вместе с API запуска файлов или команд. Это требует повышенного внимания, хотя встречается у легитимных установщиков и обновляторов.".to_string();
         indicator.severity = IndicatorSeverity::High;
         indicator.score = 46;
-        indicator.recommendation = "Проверьте цифровую подпись, официальный источник и назначение программы до запуска.".to_string();
+        indicator.recommendation =
+            "Проверьте цифровую подпись, официальный источник и назначение программы до запуска."
+                .to_string();
         return;
     }
 
@@ -95,7 +99,9 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
         indicator.description = "Несколько связанных API могут применяться для отладки, защиты, оверлеев и внедрения кода. Без полного набора и поведенческого анализа это не является доказательством угрозы.".to_string();
         indicator.severity = IndicatorSeverity::Medium;
         indicator.score = 16;
-        indicator.recommendation = "Сопоставьте признак с подписью, происхождением файла и другими результатами.".to_string();
+        indicator.recommendation =
+            "Сопоставьте признак с подписью, происхождением файла и другими результатами."
+                .to_string();
         return;
     }
 
@@ -103,7 +109,9 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
     indicator.description = "Одиночные импорты вроде VirtualAlloc или ShellExecute встречаются в браузерах, установщиках, мессенджерах и Tauri-приложениях. Без опасной комбинации они являются контекстом, а не доказательством вредоносности.".to_string();
     indicator.severity = IndicatorSeverity::Info;
     indicator.score = (indicator.evidence.len() as u16 * 2).clamp(2, 10);
-    indicator.recommendation = "Учитывайте цифровую подпись, источник файла и сочетание с другими признаками.".to_string();
+    indicator.recommendation =
+        "Учитывайте цифровую подпись, источник файла и сочетание с другими признаками."
+            .to_string();
 }
 
 pub fn calculate_risk(indicators: &[ThreatIndicator]) -> (u16, RiskLevel) {
@@ -244,10 +252,7 @@ mod tests {
             "pe.imports.suspicious",
             IndicatorSeverity::High,
             34,
-            vec![
-                "urlmon.dll!URLDownloadToFileW",
-                "shell32.dll!ShellExecuteW",
-            ],
+            vec!["urlmon.dll!URLDownloadToFileW", "shell32.dll!ShellExecuteW"],
         )];
         assert_eq!(values[0].severity, IndicatorSeverity::High);
         assert_eq!(values[0].score, 46);
