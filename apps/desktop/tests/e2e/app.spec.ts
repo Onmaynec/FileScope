@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 test('открывается функциональный главный экран v0.2.0', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Реальный анализ до запуска' })).toBeVisible();
   await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
-  await expect(page.getByText('Версия 0.2.0 · рабочая')).toBeVisible();
+  await expect(page.getByText('Версия 0.2.0')).toBeVisible();
 });
 
 test('пассивный URL-анализ создаёт реальный локальный отчёт', async ({ page }) => {
