@@ -1,0 +1,253 @@
+name: Публикация релиза FileScope
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Версия без префикса v, например 0.3.0
+        required: true
+        type: string
+      prerelease:
+        description: Опубликовать как предварительный релиз
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Проверить версию, код и release notes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверить ветку запуска
+        shell: bash
+        run: |
+          if [[ '${{ github.ref }}' != 'refs/heads/main' ]]; then
+            echo '::error::Релизный workflow разрешено запускать только из main.'
+            exit 1
+          fi
+
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Проверить формат версии
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Недопустимая версия: $VERSION"
+            exit 1
+          fi
+
+      - name: Проверить согласованность версий
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          root_version="$(node -p "require('./package.json').version")"
+          desktop_version="$(node -p "require('./apps/desktop/package.json').version")"
+          contracts_version="$(node -p "require('./packages/contracts/package.json').version")"
+          tauri_version="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' apps/desktop/src-tauri/Cargo.toml | head -n 1)"
+
+          for pair in \
+            "root package.json:$root_version" \
+            "desktop package.json:$desktop_version" \
+            "contracts package.json:$contracts_version" \
+            "tauri.conf.json:$tauri_version" \
+            "Cargo.toml:$cargo_version"; do
+            name="${pair%%:*}"
+            actual="${pair#*:}"
+            if [[ "$actual" != "$VERSION" ]]; then
+              echo "::error::$name содержит версию $actual, ожидалась $VERSION."
+              exit 1
+            fi
+          done
+
+      - name: Проверить release notes и тег
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          notes="docs/releases/v${VERSION}.md"
+
+          if [[ ! -s "$notes" ]]; then
+            echo "::error file=$notes::Добавьте русские release notes перед публикацией."
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "::error::Тег v${VERSION} уже существует. Опубликованные версии нельзя перезаписывать."
+            exit 1
+          fi
+
+          grep -Fq "## [${VERSION}]" CHANGELOG.md || {
+            echo "::error file=CHANGELOG.md::Не найдена секция ## [${VERSION}]."
+            exit 1
+          }
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Установить pnpm
+        run: npm install --global pnpm@10.14.0
+
+      - name: Установить зависимости
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Проверить ESLint
+        run: pnpm --filter @filescope/desktop lint
+
+      - name: Проверить TypeScript
+        run: pnpm --filter @filescope/desktop typecheck
+
+      - name: Запустить unit-тесты
+        run: pnpm --filter @filescope/desktop test
+
+      - name: Собрать frontend
+        run: pnpm --filter @filescope/desktop build
+
+      - name: Установить Chromium
+        run: pnpm --filter @filescope/desktop exec playwright install --with-deps chromium
+
+      - name: Запустить Playwright
+        run: pnpm --filter @filescope/desktop test:e2e
+
+  build-windows:
+    name: Собрать Windows x64 и NSIS
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Установить pnpm
+        run: npm install --global pnpm@10.14.0
+
+      - name: Установить Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Установить зависимости
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Проверить форматирование Rust
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --all --check
+
+      - name: Запустить тесты Rust
+        working-directory: apps/desktop/src-tauri
+        run: cargo test
+
+      - name: Проверить компиляцию Rust
+        working-directory: apps/desktop/src-tauri
+        run: cargo check
+
+      - name: Собрать desktop-приложение
+        run: pnpm --filter @filescope/desktop build:desktop
+
+      - name: Сохранить проверенную сборку
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileScope-${{ inputs.version }}-Windows-x64
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/filescope.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Создать тег и GitHub Release
+    needs:
+      - validate
+      - build-windows
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Скачать проверенную сборку
+        uses: actions/download-artifact@v4
+        with:
+          name: FileScope-${{ inputs.version }}-Windows-x64
+          path: release-artifact
+
+      - name: Подготовить имена и контрольные суммы
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          setup_path="$(find release-artifact -type f -iname '*setup.exe' | head -n 1)"
+          portable_path="$(find release-artifact -type f -iname 'filescope.exe' | head -n 1)"
+
+          test -n "$setup_path" && test -f "$setup_path"
+          test -n "$portable_path" && test -f "$portable_path"
+
+          cp "$setup_path" "FileScope_${VERSION}_x64-setup.exe"
+          cp "$portable_path" "FileScope_${VERSION}_x64-portable.exe"
+          sha256sum \
+            "FileScope_${VERSION}_x64-setup.exe" \
+            "FileScope_${VERSION}_x64-portable.exe" \
+            > SHA256SUMS.txt
+
+      - name: Создать защищённый тег
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "v${VERSION}" -m "FileScope v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Опубликовать GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          flags=(--repo '${{ github.repository }}' --verify-tag --title "FileScope v${VERSION}" --notes-file "docs/releases/v${VERSION}.md")
+          if [[ "$PRERELEASE" == 'true' ]]; then
+            flags+=(--prerelease)
+          else
+            flags+=(--latest)
+          fi
+
+          gh release create "v${VERSION}" "${flags[@]}" \
+            "FileScope_${VERSION}_x64-setup.exe" \
+            "FileScope_${VERSION}_x64-portable.exe" \
+            SHA256SUMS.txt
+
+      - name: Итог
+        run: echo 'Релиз опубликован из main, проверенные артефакты и SHA-256 прикреплены.'
