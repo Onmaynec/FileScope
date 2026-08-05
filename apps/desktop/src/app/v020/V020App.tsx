@@ -89,7 +89,7 @@ export function V020App() {
     <aside className={`sidebar ${preferences.sidebarCollapsed ? 'collapsed' : ''}`} aria-label="Основная навигация">
       <button className="brand" onClick={() => navigate('home')}><span className="brand-mark"><ShieldCheck /></span><strong>FileScope</strong></button>
       <nav>{navigation.map(([id, label, Icon]) => <button key={id} title={label} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}><Icon /><span>{label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><button className="nav-item utility-item" onClick={() => navigate('about')} title="О программе"><CircleHelp /><span>О программе</span></button><small>Версия 0.2.0 · рабочая</small></div>
+      <div className="sidebar-bottom"><button className="nav-item utility-item" onClick={() => navigate('about')} title="О программе"><CircleHelp /><span>О программе</span></button><small>Версия 0.2.0</small></div>
     </aside>
     <main className="main">
       <header className="titlebar"><button className="icon-button" onClick={() => patchPreferences({ sidebarCollapsed: !preferences.sidebarCollapsed })} aria-label="Свернуть боковую панель"><Menu /></button><strong>{activeTitle}</strong><span className="title-spacer" /><span className="offline-status"><CheckCircle2 />Локальное ядро</span></header>
