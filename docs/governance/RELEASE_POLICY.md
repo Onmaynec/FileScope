@@ -36,10 +36,28 @@ Hotfix создаётся от `main`, проверяется через PR и �
 - успешные `cargo fmt --all --check`, `cargo test` и `cargo check`;
 - Tauri production build;
 - Windows x64 и NSIS packaging;
-- ручная проверка installer и portable EXE;
+- ручная или документированная статическая проверка installer и portable EXE;
 - security-review сетевых, архивных, updater и CI-изменений;
 - подтверждение версии во frontend, Cargo и Tauri-конфигурации;
 - отсутствие незаполненных policy-маркеров и секретов.
+
+## Запуск публикации
+
+Публикация выполняется универсальным workflow `.github/workflows/release.yml` одним из двух способов:
+
+1. **Ручной запуск** через `workflow_dispatch` из ветки `main` с указанием версии и статуса pre-release.
+2. **Утверждённый запрос** через изменение `.github/release-request.json`, прошедшее Issue, рабочую ветку, Pull Request, CI и merge в `main`.
+
+Файл утверждённого запроса должен содержать:
+
+- версию без префикса `v`;
+- признак `prerelease`;
+- `approved: true`;
+- GitHub-логин инициатора;
+- номер связанного Issue;
+- `targetCommit`, входящий в историю текущего `main`.
+
+Изменение release request само по себе не обходит проверки: workflow повторно запускает frontend и Rust-проверки, собирает Windows-артефакты, использует Environment `production`, создаёт новый тег и не разрешает перезапись существующей версии.
 
 ## Официальные артефакты
 
@@ -50,6 +68,8 @@ Hotfix создаётся от `main`, проверяется через PR и �
 - опубликованы в GitHub Release;
 - сопровождаются `SHA256SUMS.txt`;
 - не были вручную заменены после проверки без нового документированного workflow run.
+
+Для Windows EXE дополнительно проверяется PE subsystem. Официальная release-сборка FileScope должна использовать `IMAGE_SUBSYSTEM_WINDOWS_GUI`, чтобы не открывать отдельную консоль.
 
 ## Release notes
 
@@ -72,6 +92,8 @@ Release notes ведутся на русском языке и включают:
 ## Права публикации
 
 Релиз публикует владелец либо явно назначенный участник с ролью Developer или выше. Workflow публикации должен использовать минимальные `permissions` и защищённый GitHub Environment, когда он настроен.
+
+Merge утверждённого release request владельцем считается явным разрешением на публикацию указанной версии.
 
 ## Откат
 
