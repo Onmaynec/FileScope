@@ -48,6 +48,7 @@ pub fn analyze_url_passive(input: String) -> Result<AnalysisReport, String> {
     let started = std::time::Instant::now();
     let started_at = Utc::now();
     let parsed = parse_http_url(&input)?;
+    let unicode_input = !input.is_ascii();
     let mut indicators = Vec::new();
     let details = build_passive_details(&input, &parsed, &mut indicators);
     let (risk_score, risk_level) = calculate_risk(&indicators);
@@ -69,7 +70,7 @@ pub fn analyze_url_passive(input: String) -> Result<AnalysisReport, String> {
         metadata: json!({
             "networkAccess": false,
             "fragmentPresent": parsed.fragment().is_some(),
-            "unicodeInput": !input.is_ascii(),
+            "unicodeInput": unicode_input,
         }),
         pe: None,
         url: Some(details),
