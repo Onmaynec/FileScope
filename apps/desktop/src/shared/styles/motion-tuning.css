@@ -1,0 +1,13 @@
+/* Точечные корректировки motion-системы по результатам визуальной приёмки. */
+
+/* Убираем вращающийся световой ореол вокруг dropzone при наведении.
+   Остальные реакции — подъём блока, мягкая тень и движение иконки — сохраняются. */
+.dropzone::before,
+.dropzone:hover::before,
+.dropzone:focus-visible::before,
+.dropzone--active::before {
+  content: none;
+  display: none;
+  opacity: 0;
+  animation: none;
+}
