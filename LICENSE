@@ -13,17 +13,18 @@ The FileScope software, source code, documentation, assets, build files, release
 Subject to this License, you may:
 
 - view the source code for personal evaluation, security review, and educational inspection;
-- create a private local copy solely for those purposes;
-- fork the repository through GitHub solely to prepare a contribution that will be submitted back to the official FileScope repository, where contributions are accepted.
+- create a private local source copy solely for those purposes;
+- fork the repository through GitHub solely to prepare a contribution that will be submitted back to the official FileScope repository, where contributions are accepted;
+- download and execute an unmodified official FileScope binary obtained directly from the official `Veilbyte/FileScope` GitHub Release for personal, non-commercial use.
 
 3. Restrictions
 
 Without separate prior written permission from the Veilbyte owner, you may not:
 
-- use or execute the Software in production or as part of another product or service;
+- use the source code, an unofficial build, or any modified version in production or as part of another product or service;
+- use an official binary commercially, provide it as a service, or deploy it on behalf of third parties;
 - copy, modify, adapt, translate, or create derivative works except to prepare an authorized contribution;
 - distribute, publish, mirror, sublicense, sell, rent, lease, host, or otherwise make the Software available to third parties;
-- use the Software commercially;
 - incorporate the Software or any substantial portion of it into another project;
 - remove copyright, attribution, license, provenance, security, or branding notices;
 - use the Veilbyte or FileScope names, logos, visual identity, or confusingly similar marks;
@@ -63,4 +64,4 @@ Failure to enforce a provision is not a waiver. Invalidity of one provision does
 
 Неофициальное резюме на русском языке
 
-Исходный код опубликован для просмотра, проверки безопасности и подготовки согласованных вкладов. Использование, запуск в составе другого продукта, изменение вне согласованного вклада, распространение, размещение, интеграция и коммерческое применение требуют отдельного письменного разрешения владельца Veilbyte. Английский текст выше является основным.
+Разрешено лично и некоммерчески запускать только неизменённые официальные сборки, скачанные из GitHub Releases `Veilbyte/FileScope`. Исходный код опубликован для просмотра, проверки безопасности и подготовки согласованных вкладов. Изменение, распространение, размещение, интеграция, коммерческое применение и использование неофициальных сборок требуют отдельного письменного разрешения владельца Veilbyte. Английский текст выше является основным.
