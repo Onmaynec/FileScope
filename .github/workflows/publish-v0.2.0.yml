@@ -1,0 +1,138 @@
+name: Публикация FileScope v0.2.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v0.2.0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  release:
+    name: Создать тег, Latest Release и удалить старые ветки
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Подготовить описание релиза
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          # FileScope v0.2.0
+
+          Первая функциональная версия FileScope с реальным локальным аналитическим ядром.
+
+          ## Главное
+
+          - потоковое вычисление SHA-256;
+          - определение фактического типа файла по сигнатуре;
+          - поиск двойных расширений и несоответствия расширения содержимому;
+          - базовый анализ Windows PE: архитектура, точка входа, секции, энтропия и импорты;
+          - пассивный анализ URL без сетевого обращения;
+          - ручная активная URL-проверка с DNS и минимальным HTTP-запросом;
+          - структурный анализ ZIP без извлечения содержимого на диск;
+          - защита от path traversal и архивных бомб;
+          - объяснимый Rule Engine и четыре уровня риска;
+          - последовательная очередь проверок;
+          - локальная история отчётов;
+          - экспорт JSON и автономного HTML;
+          - улучшенный контраст светлой темы;
+          - поддержка `prefers-reduced-motion`.
+
+          ## Безопасность
+
+          Исследуемые файлы не запускаются и не отправляются во внешние сервисы. ZIP не извлекаются на диск. Пассивный URL-анализ не использует сеть, а активная проверка запускается только после явного согласия.
+
+          ## Ограничения
+
+          - RAR и 7Z распознаются, но структурно пока не разбираются;
+          - наличие каталога Authenticode не означает проверенную доверенную подпись;
+          - активный URL-анализ не исполняет JavaScript и не загружает страницу целиком;
+          - Hyper-V Sandbox и поведенческий анализ не входят в v0.2.0.
+          EOF
+
+      - name: Скачать проверенную Windows-сборку
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p release-artifact
+          gh run download 31012115351 \
+            --repo '${{ github.repository }}' \
+            --name 'FileScope-Windows-x64' \
+            --dir release-artifact
+
+          setup_path="$(find release-artifact -type f -iname '*setup.exe' | head -n 1)"
+          portable_path="$(find release-artifact -type f -iname 'filescope.exe' | head -n 1)"
+
+          test -n "$setup_path" && test -f "$setup_path"
+          test -n "$portable_path" && test -f "$portable_path"
+
+          cp "$setup_path" FileScope_0.2.0_x64-setup.exe
+          cp "$portable_path" FileScope_0.2.0_x64-portable.exe
+          sha256sum FileScope_0.2.0_x64-setup.exe FileScope_0.2.0_x64-portable.exe > SHA256SUMS.txt
+
+      - name: Создать тег v0.2.0
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --tags origin refs/tags/v0.2.0 >/dev/null 2>&1; then
+            echo 'Тег v0.2.0 уже существует.'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a v0.2.0 -m 'FileScope v0.2.0'
+            git push origin v0.2.0
+          fi
+
+      - name: Опубликовать Latest Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view v0.2.0 --repo '${{ github.repository }}' >/dev/null 2>&1; then
+            gh release edit v0.2.0 \
+              --repo '${{ github.repository }}' \
+              --title 'FileScope v0.2.0' \
+              --notes-file release-notes.md \
+              --latest
+          else
+            gh release create v0.2.0 \
+              --repo '${{ github.repository }}' \
+              --title 'FileScope v0.2.0' \
+              --notes-file release-notes.md \
+              --latest
+          fi
+
+          gh release upload v0.2.0 \
+            --repo '${{ github.repository }}' \
+            FileScope_0.2.0_x64-setup.exe \
+            FileScope_0.2.0_x64-portable.exe \
+            SHA256SUMS.txt \
+            --clobber
+
+      - name: Отметить успешную публикацию в Issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment 7 \
+            --repo '${{ github.repository }}' \
+            --body 'FileScope v0.2.0 опубликован как Latest Release. Тег v0.2.0 создан, Windows x64 NSIS и portable EXE прикреплены к релизу.'
+
+      - name: Удалить завершённые рабочие ветки
+        shell: bash
+        run: |
+          for branch in feature/v0.2.0 feature/foundation; do
+            if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
+              git push origin --delete "$branch"
+            else
+              echo "Ветка $branch уже отсутствует."
+            fi
+          done
