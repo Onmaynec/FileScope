@@ -10,8 +10,7 @@ use uuid::Uuid;
 use super::{
     rules::{calculate_risk, indicator},
     types::{
-        AnalysisLimits, AnalysisReport, IndicatorSeverity, ObjectKind, ThreatIndicator,
-        UrlAnalysis,
+        AnalysisLimits, AnalysisReport, IndicatorSeverity, ObjectKind, ThreatIndicator, UrlAnalysis,
     },
 };
 
@@ -29,8 +28,17 @@ const SUSPICIOUS_TLDS: &[&str] = &[
     "zip", "mov", "top", "xyz", "click", "work", "gq", "tk", "ml", "cf",
 ];
 const REDIRECT_KEYS: &[&str] = &[
-    "url", "uri", "redirect", "redirect_url", "target", "next", "continue", "dest",
-    "destination", "return", "return_to",
+    "url",
+    "uri",
+    "redirect",
+    "redirect_url",
+    "target",
+    "next",
+    "continue",
+    "dest",
+    "destination",
+    "return",
+    "return_to",
 ];
 const DANGEROUS_PATH_EXTENSIONS: &[&str] = &[
     ".exe", ".scr", ".msi", ".bat", ".cmd", ".ps1", ".js", ".vbs", ".hta", ".lnk",
@@ -242,13 +250,20 @@ fn build_passive_details(
     parsed: &Url,
     indicators: &mut Vec<ThreatIndicator>,
 ) -> UrlAnalysis {
-    let host = parsed.host_str().unwrap_or("").trim_end_matches('.').to_ascii_lowercase();
+    let host = parsed
+        .host_str()
+        .unwrap_or("")
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
     let host_is_ip = match parsed.host() {
         Some(Host::Ipv4(_)) | Some(Host::Ipv6(_)) => true,
         _ => host.parse::<IpAddr>().is_ok(),
     };
     let contains_punycode = host.split('.').any(|part| part.starts_with("xn--"));
-    let labels = host.split('.').filter(|part| !part.is_empty()).collect::<Vec<_>>();
+    let labels = host
+        .split('.')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
     let subdomain_count = labels.len().saturating_sub(2);
     let has_credentials = !parsed.username().is_empty() || parsed.password().is_some();
     let query_pairs = parsed.query_pairs().collect::<Vec<_>>();
