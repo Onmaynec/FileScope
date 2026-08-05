@@ -33,6 +33,7 @@ export function analyzeUrlInBrowser(input: string): AnalysisReport {
   const indicators: ThreatIndicator[] = [];
   const host = parsed.hostname.toLowerCase();
   const labels = host.split('.').filter(Boolean);
+  const containsUnicode = Array.from(input).some((character) => (character.codePointAt(0) ?? 0) > 127);
   const add = (indicator: ThreatIndicator) => indicators.push(indicator);
   const make = (
     id: string,
@@ -45,7 +46,7 @@ export function analyzeUrlInBrowser(input: string): AnalysisReport {
   ): ThreatIndicator => ({ id, title, description, severity, score, evidence, recommendation, category: 'url' });
 
   if (input.length > 220) add(make('url.length.excessive', 'Необычно длинный URL', 'Длинный адрес затрудняет визуальную проверку.', 'medium', 16, [`Длина: ${input.length}`], 'Проверьте домен и параметры отдельно.'));
-  if (host.includes('xn--') || /[^\x00-\x7F]/.test(input)) add(make('url.host.idn', 'Домен содержит IDN/Punycode', 'Символы домена могут визуально имитировать другой адрес.', 'medium', 22, [host], 'Сравните адрес с официальным доменом посимвольно.'));
+  if (host.includes('xn--') || containsUnicode) add(make('url.host.idn', 'Домен содержит IDN/Punycode', 'Символы домена могут визуально имитировать другой адрес.', 'medium', 22, [host], 'Сравните адрес с официальным доменом посимвольно.'));
   if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(':')) add(make('url.host.ip-address', 'Вместо домена используется IP-адрес', 'Прямой адрес затрудняет проверку владельца ресурса.', 'medium', 18, [host], 'Не вводите учётные данные без подтверждения адреса.'));
   if (parsed.username || parsed.password) add(make('url.credentials.embedded', 'В URL встроены учётные данные', 'Часть до символа @ может скрывать настоящий домен.', 'high', 40, [parsed.href], 'Не открывайте адрес и удалите встроенные учётные данные.'));
   if (labels.length > 5) add(make('url.host.many-subdomains', 'Необычно много поддоменов', 'Длинная цепочка поддоменов может маскировать основной домен.', 'medium', 16, [host], 'Проверяйте домен справа налево.'));
@@ -78,7 +79,7 @@ export function analyzeUrlInBrowser(input: string): AnalysisReport {
     riskLevel,
     riskScore: score,
     indicators,
-    metadata: { networkAccess: false, browserFallback: true },
+    metadata: { networkAccess: false, browserFallback: true, containsUnicode },
     url: {
       normalizedUrl: parsed.href,
       scheme: parsed.protocol.replace(':', ''),
