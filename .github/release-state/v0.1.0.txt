@@ -1,0 +1,5 @@
+release=v0.1.0
+status=published
+tag_commit=a5b22f78c56d5d06648e4c11fa49f2ca779f8b21
+workflow_run=31002790842
+published_at=2026-08-05T11:46:19Z
