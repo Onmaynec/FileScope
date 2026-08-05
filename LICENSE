@@ -1,0 +1,66 @@
+Veilbyte Restricted Source License 1.0
+
+Copyright © 2026 Veilbyte and its owner. All rights reserved.
+
+This is a restricted source-available license. It is NOT an open-source license.
+
+1. Ownership
+
+The FileScope software, source code, documentation, assets, build files, releases, and related materials (the “Software”) are owned by Veilbyte, its owner, or their respective licensors. No rights are granted except those expressly stated in this License.
+
+2. Limited permission
+
+Subject to this License, you may:
+
+- view the source code for personal evaluation, security review, and educational inspection;
+- create a private local copy solely for those purposes;
+- fork the repository through GitHub solely to prepare a contribution that will be submitted back to the official FileScope repository, where contributions are accepted.
+
+3. Restrictions
+
+Without separate prior written permission from the Veilbyte owner, you may not:
+
+- use or execute the Software in production or as part of another product or service;
+- copy, modify, adapt, translate, or create derivative works except to prepare an authorized contribution;
+- distribute, publish, mirror, sublicense, sell, rent, lease, host, or otherwise make the Software available to third parties;
+- use the Software commercially;
+- incorporate the Software or any substantial portion of it into another project;
+- remove copyright, attribution, license, provenance, security, or branding notices;
+- use the Veilbyte or FileScope names, logos, visual identity, or confusingly similar marks;
+- bypass technical or contractual restrictions applied to the Software.
+
+4. Separate permission
+
+Commercial, production, redistribution, integration, modification, and other rights may be granted under a separate written agreement. Unless that agreement states otherwise, authorized use must preserve Veilbyte attribution and a link to the official repository.
+
+Licensing requests must be directed privately to the Veilbyte owner `@Onmaynec` through the official GitHub organization channels.
+
+5. Contributions
+
+Contributions are governed by `CONTRIBUTING.md` and `CONTRIBUTOR_LICENSE_AGREEMENT.md`. Submission of a contribution does not grant the contributor rights to other portions of the Software.
+
+6. Third-party components
+
+Third-party components remain governed by their respective licenses. This License does not restrict rights separately granted by those third-party licenses.
+
+7. No warranty
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+8. Limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, VEILBYTE, ITS OWNER, AND CONTRIBUTORS WILL NOT BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES ARISING FROM THE SOFTWARE OR THIS LICENSE.
+
+9. Termination
+
+Any permission granted by this License terminates automatically upon breach. On termination, you must stop all unauthorized use and delete copies not required to be retained by law.
+
+10. No waiver and severability
+
+Failure to enforce a provision is not a waiver. Invalidity of one provision does not invalidate the remainder.
+
+---
+
+Неофициальное резюме на русском языке
+
+Исходный код опубликован для просмотра, проверки безопасности и подготовки согласованных вкладов. Использование, запуск в составе другого продукта, изменение вне согласованного вклада, распространение, размещение, интеграция и коммерческое применение требуют отдельного письменного разрешения владельца Veilbyte. Английский текст выше является основным.
