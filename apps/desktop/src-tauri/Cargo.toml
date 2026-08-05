@@ -1,6 +1,6 @@
 [package]
 name = "filescope"
-version = "0.2.0"
+version = "0.3.0"
 description = "FileScope Windows desktop application by Veilbyte"
 authors = ["Veilbyte"]
 edition = "2021"

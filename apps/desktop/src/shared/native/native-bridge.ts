@@ -1,4 +1,4 @@
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { CloseBehavior } from '../services/settings-service';
@@ -33,17 +33,11 @@ export async function selectLocalObjects(options: { directory?: boolean; multipl
   }
 }
 
-export async function bindCloseBehavior(getBehavior: () => CloseBehavior): Promise<UnlistenFn | null> {
+export async function syncCloseBehavior(behavior: CloseBehavior): Promise<void> {
   try {
-    const window = getCurrentWindow();
-    return await window.onCloseRequested(async (event) => {
-      if (getBehavior() === 'tray') {
-        event.preventDefault();
-        await window.hide();
-      }
-    });
+    await invoke('set_close_behavior', { behavior });
   } catch {
-    return null;
+    // В браузерном режиме Rust backend недоступен — это ожидаемо.
   }
 }
 
