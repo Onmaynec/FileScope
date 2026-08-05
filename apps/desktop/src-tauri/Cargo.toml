@@ -1,9 +1,12 @@
 [package]
 name = "filescope"
 version = "0.2.0"
-description = "FileScope desktop application"
-authors = ["FileScope Team"]
+description = "FileScope Windows desktop application by Veilbyte"
+authors = ["Veilbyte"]
 edition = "2021"
+license-file = "../../../LICENSE"
+repository = "https://github.com/Veilbyte/FileScope"
+homepage = "https://github.com/Veilbyte/FileScope"
 
 [lib]
 name = "filescope_lib"

@@ -1,0 +1,29 @@
+# Владелец по умолчанию
+* @Onmaynec
+
+# Управление, безопасность и лицензирование
+/.github/ @Onmaynec
+/LICENSE @Onmaynec
+/README.md @Onmaynec
+/REPOSITORY_POLICY.md @Onmaynec
+/SECURITY.md @Onmaynec
+/RESPONSIBLE_USE.md @Onmaynec
+/BRAND_POLICY.md @Onmaynec
+/CONTRIBUTING.md @Onmaynec
+/CONTRIBUTOR_LICENSE_AGREEMENT.md @Onmaynec
+/CODE_OF_CONDUCT.md @Onmaynec
+
+# Нативное ядро и анализаторы
+/apps/desktop/src-tauri/ @Onmaynec
+/apps/desktop/src/features/analysis/ @Onmaynec
+/packages/contracts/ @Onmaynec
+
+# Сборка и релизы
+/.github/workflows/ @Onmaynec
+/apps/desktop/src-tauri/tauri.conf.json @Onmaynec
+/apps/desktop/package.json @Onmaynec
+/package.json @Onmaynec
+
+# Архитектура и продуктовые границы
+/docs/architecture/ @Onmaynec
+/docs/product/ @Onmaynec

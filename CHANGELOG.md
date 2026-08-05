@@ -2,6 +2,20 @@
 
 Все значимые изменения FileScope описываются в этом файле.
 
+## [Не выпущено]
+
+### Управление и документация
+
+- репозиторий перенесён в организацию `Veilbyte`;
+- проект классифицирован как `Public Source-Available`;
+- добавлена Veilbyte Restricted Source License 1.0;
+- добавлена локальная политика репозитория;
+- обновлены правила участия и security-процесс;
+- добавлены Code of Conduct, Responsible Use, Support, Brand Policy и CLA;
+- добавлены CODEOWNERS, Pull Request template и локальные Issue Forms;
+- настроены Dependabot и автоматическая проверка Policy Pack;
+- закреплена модель `Issue → branch → Pull Request → CI → Review → Merge`.
+
 ## [0.2.0] — 2026-08-05
 
 ### Добавлено

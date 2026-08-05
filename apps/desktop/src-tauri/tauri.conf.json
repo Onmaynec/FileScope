@@ -33,10 +33,10 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "publisher": "FileScope Team",
+    "publisher": "Veilbyte",
     "category": "Utility",
     "shortDescription": "Локальная проверка ссылок, файлов и архивов до запуска",
-    "longDescription": "FileScope — desktop-приложение для локального статического анализа файлов, URL и ZIP-архивов без запуска исследуемых объектов.",
+    "longDescription": "FileScope by Veilbyte — desktop-приложение для локального статического анализа файлов, URL и ZIP-архивов без запуска исследуемых объектов.",
     "windows": {
       "nsis": {
         "installMode": "currentUser",
