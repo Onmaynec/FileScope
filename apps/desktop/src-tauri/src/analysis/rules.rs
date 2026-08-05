@@ -110,8 +110,7 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
     indicator.severity = IndicatorSeverity::Info;
     indicator.score = (indicator.evidence.len() as u16 * 2).clamp(2, 10);
     indicator.recommendation =
-        "Учитывайте цифровую подпись, источник файла и сочетание с другими признаками."
-            .to_string();
+        "Учитывайте цифровую подпись, источник файла и сочетание с другими признаками.".to_string();
 }
 
 pub fn calculate_risk(indicators: &[ThreatIndicator]) -> (u16, RiskLevel) {
