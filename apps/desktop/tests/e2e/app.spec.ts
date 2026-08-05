@@ -33,3 +33,21 @@ test('отчёт сохраняется в локальной истории', a
   await page.getByRole('button', { name: /Отчёты/ }).click();
   await expect(page.getByRole('button', { name: /example.com/ })).toBeVisible();
 });
+
+test('два URL последовательно обрабатываются через очередь', async ({ page }) => {
+  await page.getByRole('button', { name: /Ссылки/ }).click();
+  const input = page.getByLabel('Адрес');
+
+  await input.fill('https://example.com/first');
+  await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
+  await input.fill('https://example.org/second');
+  await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
+
+  await expect(page.getByRole('heading', { name: /Очередь проверок/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Запустить очередь (2)' }).click();
+  await expect(page.getByText('2/2')).toBeVisible();
+
+  await page.getByRole('button', { name: /Отчёты/ }).click();
+  await expect(page.getByRole('button', { name: /example.com/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /example.org/ })).toBeVisible();
+});
