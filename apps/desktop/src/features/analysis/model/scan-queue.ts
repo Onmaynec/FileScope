@@ -34,7 +34,11 @@ export function createQueueItem(
 }
 
 export function appendUniqueQueueItems(current: AnalysisQueueItem[], next: AnalysisQueueItem[]): AnalysisQueueItem[] {
-  const existing = new Set(current.filter((item) => item.status !== 'cancelled').map(queueIdentity));
+  const existing = new Set(
+    current
+      .filter((item) => item.status === 'pending' || item.status === 'running')
+      .map(queueIdentity),
+  );
   const result = [...current];
   for (const item of next) {
     const identity = queueIdentity(item);
