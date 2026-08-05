@@ -12,18 +12,27 @@ on:
         required: true
         default: false
         type: boolean
+  push:
+    branches: [main]
+    paths:
+      - '.github/release-request.json'
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.version }}
+  group: release-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   validate:
     name: Проверить версию, код и release notes
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      source: ${{ steps.release.outputs.source }}
     steps:
       - name: Проверить ветку запуска
         shell: bash
@@ -38,10 +47,64 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Определить параметры релиза
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
+            version="$INPUT_VERSION"
+            prerelease="${INPUT_PRERELEASE:-false}"
+            source='workflow_dispatch'
+          else
+            request='.github/release-request.json'
+            test -s "$request" || {
+              echo "::error file=$request::Файл запроса релиза отсутствует или пуст."
+              exit 1
+            }
+
+            version="$(node -p "require('./${request}').version")"
+            prerelease="$(node -p "String(require('./${request}').prerelease)")"
+            approved="$(node -p "String(require('./${request}').approved)")"
+            target_commit="$(node -p "require('./${request}').targetCommit || ''")"
+            source='approved-release-request'
+
+            if [[ "$approved" != 'true' ]]; then
+              echo "::error file=$request::Запрос релиза должен содержать approved=true."
+              exit 1
+            fi
+
+            if [[ -n "$target_commit" ]]; then
+              git cat-file -e "${target_commit}^{commit}" || {
+                echo "::error file=$request::targetCommit не является доступным commit."
+                exit 1
+              }
+              git merge-base --is-ancestor "$target_commit" HEAD || {
+                echo "::error file=$request::targetCommit не входит в историю текущего main."
+                exit 1
+              }
+            fi
+          fi
+
+          if [[ "$prerelease" != 'true' && "$prerelease" != 'false' ]]; then
+            echo "::error::prerelease должен иметь значение true или false."
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+          echo "Подготовка FileScope v${version}; prerelease=${prerelease}; source=${source}."
+
       - name: Проверить формат версии
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Недопустимая версия: $VERSION"
@@ -51,7 +114,7 @@ jobs:
       - name: Проверить согласованность версий
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
 
@@ -78,7 +141,7 @@ jobs:
       - name: Проверить release notes и тег
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
           notes="docs/releases/v${VERSION}.md"
@@ -131,6 +194,7 @@ jobs:
     name: Собрать Windows x64 и NSIS
     needs: validate
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
@@ -169,7 +233,7 @@ jobs:
       - name: Сохранить проверенную сборку
         uses: actions/upload-artifact@v4
         with:
-          name: FileScope-${{ inputs.version }}-Windows-x64
+          name: FileScope-${{ needs.validate.outputs.version }}-Windows-x64
           path: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
             apps/desktop/src-tauri/target/release/filescope.exe
@@ -182,6 +246,7 @@ jobs:
       - validate
       - build-windows
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: production
     permissions:
       contents: write
@@ -194,13 +259,13 @@ jobs:
       - name: Скачать проверенную сборку
         uses: actions/download-artifact@v4
         with:
-          name: FileScope-${{ inputs.version }}-Windows-x64
+          name: FileScope-${{ needs.validate.outputs.version }}-Windows-x64
           path: release-artifact
 
       - name: Подготовить имена и контрольные суммы
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
 
@@ -220,7 +285,7 @@ jobs:
       - name: Создать защищённый тег
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -232,8 +297,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version }}
-          PRERELEASE: ${{ inputs.prerelease }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: |
           set -euo pipefail
 
