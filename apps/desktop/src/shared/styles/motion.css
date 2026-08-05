@@ -1,0 +1,738 @@
+/*
+ * Motion system FileScope
+ * Быстрые микровзаимодействия, мягкие переходы экранов и доступный reduced motion.
+ */
+
+.app {
+  --motion-instant: 90ms;
+  --motion-fast: 160ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+  --motion-slower: 620ms;
+  --ease-standard: cubic-bezier(.2, .8, .2, 1);
+  --ease-emphasized: cubic-bezier(.16, 1, .3, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --motion-shadow: 0 16px 44px rgba(0, 0, 0, .22);
+  animation: app-reveal var(--motion-slow) var(--ease-emphasized) both;
+}
+
+/* Появление экранов и каскад блоков */
+.content > * {
+  animation: page-section-enter var(--motion-slow) var(--ease-emphasized) both;
+  transform-origin: 50% 0;
+}
+
+.content > *:nth-child(2) { animation-delay: 35ms; }
+.content > *:nth-child(3) { animation-delay: 70ms; }
+.content > *:nth-child(4) { animation-delay: 105ms; }
+.content > *:nth-child(5) { animation-delay: 140ms; }
+.content > *:nth-child(6) { animation-delay: 175ms; }
+.content > *:nth-child(7) { animation-delay: 210ms; }
+
+.page-header h1 {
+  animation: title-enter var(--motion-slow) var(--ease-emphasized) both;
+}
+
+.page-header p {
+  animation: subtitle-enter var(--motion-slow) 45ms var(--ease-emphasized) both;
+}
+
+/* Боковая панель */
+.sidebar {
+  transition:
+    width var(--motion-base) var(--ease-emphasized),
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard);
+  animation: sidebar-enter var(--motion-slow) var(--ease-emphasized) both;
+}
+
+.brand-mark {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: transform var(--motion-base) var(--ease-spring), box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: -60%;
+  z-index: -1;
+  background: linear-gradient(115deg, transparent 34%, rgba(255,255,255,.42) 48%, transparent 62%);
+  transform: translateX(-62%) rotate(10deg);
+  transition: transform 700ms var(--ease-emphasized);
+}
+
+.brand:hover .brand-mark {
+  transform: rotate(-5deg) scale(1.08);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, .34);
+}
+
+.brand:hover .brand-mark::after {
+  transform: translateX(62%) rotate(10deg);
+}
+
+.nav-item {
+  position: relative;
+  overflow: hidden;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-emphasized),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.nav-item::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, .08), transparent);
+  transform: translateX(-110%);
+  transition: transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.nav-item:hover {
+  transform: translateX(3px);
+}
+
+.nav-item:hover::after,
+.nav-item.active::after {
+  transform: translateX(110%);
+}
+
+.nav-item svg {
+  transition: transform var(--motion-base) var(--ease-spring), color var(--motion-fast) var(--ease-standard);
+}
+
+.nav-item:hover svg {
+  transform: scale(1.12) rotate(-3deg);
+}
+
+.nav-item.active svg {
+  animation: nav-icon-pop var(--motion-slow) var(--ease-spring) both;
+}
+
+.subscription-card {
+  transition:
+    transform var(--motion-base) var(--ease-emphasized),
+    border-color var(--motion-base) var(--ease-standard),
+    background-color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.subscription-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  border-color: rgba(167, 139, 250, .7);
+  background: rgba(124, 58, 237, .16);
+  box-shadow: 0 14px 34px rgba(76, 29, 149, .2);
+}
+
+/* Заголовок окна и статус */
+.titlebar {
+  transition: background-color var(--motion-base) var(--ease-standard), border-color var(--motion-base) var(--ease-standard);
+  animation: titlebar-enter var(--motion-base) var(--ease-emphasized) both;
+}
+
+.offline-status svg {
+  animation: status-breathe 2.8s ease-in-out infinite;
+}
+
+/* Кнопки */
+.button,
+.icon-button,
+.text-button {
+  transition:
+    transform var(--motion-fast) var(--ease-emphasized),
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.button:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 9px 24px rgba(0, 0, 0, .2);
+}
+
+.button-primary:not(:disabled):hover {
+  box-shadow: 0 10px 28px rgba(37, 99, 235, .35);
+}
+
+.button-danger:not(:disabled):hover {
+  box-shadow: 0 10px 28px rgba(220, 38, 38, .28);
+}
+
+.button:not(:disabled):active,
+.icon-button:not(:disabled):active,
+.text-button:not(:disabled):active {
+  transform: translateY(0) scale(.96);
+  transition-duration: var(--motion-instant);
+}
+
+.icon-button:not(:disabled):hover svg {
+  transform: scale(1.08);
+}
+
+.icon-button svg,
+.button svg {
+  transition: transform var(--motion-fast) var(--ease-spring);
+}
+
+.button:not(:disabled):hover svg {
+  transform: translateX(2px) scale(1.04);
+}
+
+/* Карточки и списки */
+.card,
+.action-card,
+.report-card,
+.program-card,
+.selected-object,
+.choice-card {
+  transition:
+    transform var(--motion-base) var(--ease-emphasized),
+    border-color var(--motion-base) var(--ease-standard),
+    background-color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.action-card,
+.report-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.action-card::after,
+.report-card::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 0%), rgba(96, 165, 250, .16), transparent 48%);
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.action-card:hover,
+.report-card:hover,
+.program-card:hover,
+.selected-object:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--motion-shadow);
+}
+
+.action-card:hover::after,
+.report-card:hover::after {
+  opacity: 1;
+}
+
+.action-card:hover svg,
+.program-card:hover .program-icon svg {
+  animation: card-icon-float 650ms var(--ease-spring) both;
+}
+
+.quick-grid > *,
+.report-grid > *,
+.program-list > *,
+.quarantine-list > * {
+  animation: list-item-enter var(--motion-slow) var(--ease-emphasized) both;
+}
+
+.quick-grid > *:nth-child(2),
+.report-grid > *:nth-child(2),
+.program-list > *:nth-child(2),
+.quarantine-list > *:nth-child(2) { animation-delay: 45ms; }
+
+.quick-grid > *:nth-child(3),
+.report-grid > *:nth-child(3),
+.program-list > *:nth-child(3),
+.quarantine-list > *:nth-child(3) { animation-delay: 90ms; }
+
+.quick-grid > *:nth-child(4),
+.report-grid > *:nth-child(4),
+.program-list > *:nth-child(4),
+.quarantine-list > *:nth-child(4) { animation-delay: 135ms; }
+
+/* Dropzone */
+.dropzone {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition:
+    transform var(--motion-base) var(--ease-emphasized),
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    outline-color var(--motion-base) var(--ease-standard);
+}
+
+.dropzone::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  z-index: -1;
+  background: conic-gradient(from 180deg, transparent, rgba(59,130,246,.13), transparent 35%);
+  opacity: 0;
+  transform: rotate(0deg);
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.dropzone:hover,
+.dropzone:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 46px rgba(37, 99, 235, .14);
+}
+
+.dropzone:hover::before,
+.dropzone:focus-visible::before,
+.dropzone--active::before {
+  opacity: 1;
+  animation: dropzone-orbit 4s linear infinite;
+}
+
+.dropzone > svg {
+  transition: transform var(--motion-base) var(--ease-spring), filter var(--motion-base) var(--ease-standard);
+}
+
+.dropzone:hover > svg,
+.dropzone:focus-visible > svg {
+  transform: translateY(-5px) scale(1.08);
+  filter: drop-shadow(0 8px 16px rgba(59, 130, 246, .3));
+}
+
+.dropzone--active {
+  animation: dropzone-active 1.15s ease-in-out infinite;
+}
+
+.dropzone--active > svg {
+  animation: upload-bounce 850ms var(--ease-spring) infinite alternate;
+}
+
+/* Tabs, inputs and switches */
+.tabs button,
+.settings-nav button {
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-emphasized),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.tabs button:not(.active):hover,
+.settings-nav button:not(.active):hover {
+  transform: translateY(-1px);
+}
+
+.tabs button.active {
+  animation: tab-select var(--motion-base) var(--ease-spring) both;
+  box-shadow: 0 7px 18px rgba(37, 99, 235, .24);
+}
+
+.input {
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-emphasized);
+}
+
+.input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #3b82f6 52%, var(--border));
+}
+
+.input:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, .12), 0 8px 22px rgba(0,0,0,.12);
+}
+
+.field-error {
+  animation: error-enter 280ms var(--ease-spring) both;
+}
+
+.switch {
+  transition: background-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard), transform var(--motion-fast) var(--ease-emphasized);
+}
+
+.switch:hover {
+  transform: scale(1.04);
+}
+
+.switch span {
+  transition: transform var(--motion-base) var(--ease-spring), box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.switch.on {
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, .1);
+}
+
+.switch.on span {
+  box-shadow: 0 3px 9px rgba(0,0,0,.26);
+}
+
+.choice-card.selected {
+  animation: choice-select var(--motion-base) var(--ease-spring) both;
+}
+
+/* Статусы и риск */
+.info-banner,
+.status-banner,
+.risk-summary {
+  transition:
+    transform var(--motion-base) var(--ease-emphasized),
+    box-shadow var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard);
+}
+
+.info-banner:hover,
+.status-banner:hover {
+  transform: translateY(-2px);
+}
+
+.info-banner svg,
+.status-banner svg {
+  transition: transform var(--motion-base) var(--ease-spring);
+}
+
+.info-banner:hover svg,
+.status-banner:hover svg {
+  transform: scale(1.12) rotate(-4deg);
+}
+
+.risk-summary {
+  animation: risk-summary-enter 560ms var(--ease-emphasized) both;
+}
+
+.risk-summary > svg {
+  animation: risk-icon-pulse 1.8s ease-in-out 2;
+}
+
+.risk-dot {
+  animation: risk-dot-pulse 2.2s ease-in-out infinite;
+}
+
+.badge {
+  transition: transform var(--motion-fast) var(--ease-spring), background-color var(--motion-fast) var(--ease-standard);
+}
+
+.badge:hover {
+  transform: translateY(-1px) scale(1.03);
+}
+
+/* Модальные окна */
+.dialog-backdrop {
+  animation: backdrop-enter var(--motion-base) ease-out both;
+  backdrop-filter: blur(7px);
+}
+
+.dialog {
+  animation: dialog-enter var(--motion-slow) var(--ease-spring) both;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .48);
+}
+
+.dialog-icon {
+  animation: dialog-icon-enter 520ms 80ms var(--ease-spring) both;
+}
+
+.dialog h2,
+.dialog p,
+.dialog-actions {
+  animation: dialog-content-enter var(--motion-slow) var(--ease-emphasized) both;
+}
+
+.dialog p { animation-delay: 40ms; }
+.dialog-actions { animation-delay: 80ms; }
+
+/* Toast */
+.toast-host {
+  perspective: 900px;
+}
+
+.toast {
+  position: relative;
+  overflow: hidden;
+  transform-origin: 100% 50%;
+  animation: toast-enter 460ms var(--ease-spring) both;
+  transition: transform var(--motion-fast) var(--ease-emphasized), box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.toast:hover {
+  transform: translateX(-4px) scale(1.015);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, .32);
+}
+
+.toast::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: currentColor;
+  opacity: .45;
+  transform-origin: left;
+  animation: toast-timer 4.2s linear both;
+}
+
+.toast > svg {
+  animation: toast-icon-pop 520ms 80ms var(--ease-spring) both;
+}
+
+/* Onboarding */
+.onboarding {
+  animation: backdrop-enter var(--motion-base) ease-out both;
+  backdrop-filter: blur(10px);
+}
+
+.onboarding-card {
+  animation: onboarding-card-enter 560ms var(--ease-spring) both;
+  box-shadow: 0 34px 110px rgba(0, 0, 0, .52);
+}
+
+.onboarding-content {
+  animation: onboarding-step-enter var(--motion-slow) var(--ease-emphasized) both;
+}
+
+.onboarding-logo,
+.onboarding-icon {
+  animation: onboarding-icon-enter 620ms 70ms var(--ease-spring) both;
+}
+
+.onboarding-progress span {
+  transition:
+    transform var(--motion-base) var(--ease-spring),
+    background-color var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+
+.onboarding-progress span.active {
+  transform: scaleX(1.08);
+  animation: progress-activate 420ms var(--ease-spring) both;
+}
+
+.onboarding-object-grid span {
+  animation: list-item-enter var(--motion-slow) var(--ease-emphasized) both;
+}
+
+.onboarding-object-grid span:nth-child(2) { animation-delay: 50ms; }
+.onboarding-object-grid span:nth-child(3) { animation-delay: 100ms; }
+.onboarding-object-grid span:nth-child(4) { animation-delay: 150ms; }
+
+/* Пустые состояния и технические блоки */
+.empty svg {
+  animation: empty-icon-float 3.4s ease-in-out infinite;
+}
+
+.tree span,
+.indicator,
+.table-row,
+.metadata-grid > div {
+  animation: detail-row-enter var(--motion-base) var(--ease-emphasized) both;
+}
+
+.indicator:nth-child(3),
+.table-row:nth-child(3),
+.metadata-grid > div:nth-child(2) { animation-delay: 35ms; }
+
+.indicator:nth-child(4),
+.table-row:nth-child(4),
+.metadata-grid > div:nth-child(3) { animation-delay: 70ms; }
+
+.metadata-grid > div:hover {
+  transform: translateY(-2px);
+  transition: transform var(--motion-fast) var(--ease-emphasized), background-color var(--motion-fast) var(--ease-standard);
+}
+
+/* Keyframes */
+@keyframes app-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes page-section-enter {
+  from { opacity: 0; transform: translateY(14px) scale(.992); filter: blur(3px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes title-enter {
+  from { opacity: 0; transform: translateY(12px); letter-spacing: -.03em; }
+  to { opacity: 1; transform: translateY(0); letter-spacing: normal; }
+}
+
+@keyframes subtitle-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sidebar-enter {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes titlebar-enter {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes nav-icon-pop {
+  0% { transform: scale(.78); }
+  65% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+@keyframes status-breathe {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(34,197,94,0)); }
+  50% { transform: scale(1.12); filter: drop-shadow(0 0 7px rgba(34,197,94,.55)); }
+}
+
+@keyframes list-item-enter {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes card-icon-float {
+  0% { transform: translateY(0) rotate(0); }
+  45% { transform: translateY(-5px) rotate(-4deg) scale(1.08); }
+  100% { transform: translateY(0) rotate(0); }
+}
+
+@keyframes dropzone-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dropzone-active {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59,130,246,.16); }
+  50% { transform: scale(1.006); box-shadow: 0 0 0 10px rgba(59,130,246,0); }
+}
+
+@keyframes upload-bounce {
+  from { transform: translateY(-3px) scale(1.04); }
+  to { transform: translateY(-10px) scale(1.12); }
+}
+
+@keyframes tab-select {
+  from { transform: scale(.94); }
+  70% { transform: scale(1.025); }
+  to { transform: scale(1); }
+}
+
+@keyframes error-enter {
+  from { opacity: 0; transform: translateX(-5px); }
+  55% { transform: translateX(3px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes choice-select {
+  0% { transform: scale(.985); }
+  65% { transform: scale(1.012); }
+  100% { transform: scale(1); }
+}
+
+@keyframes risk-summary-enter {
+  from { opacity: 0; transform: translateY(12px) scale(.985); box-shadow: 0 0 0 rgba(0,0,0,0); }
+  to { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 18px 48px color-mix(in srgb, var(--risk) 12%, transparent); }
+}
+
+@keyframes risk-icon-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 color-mix(in srgb, var(--risk) 0%, transparent)); }
+  50% { transform: scale(1.1); filter: drop-shadow(0 0 13px color-mix(in srgb, var(--risk) 55%, transparent)); }
+}
+
+@keyframes risk-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--risk) 34%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--risk) 0%, transparent); }
+}
+
+@keyframes backdrop-enter {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-enter {
+  from { opacity: 0; transform: translateY(24px) scale(.92); }
+  72% { transform: translateY(-2px) scale(1.012); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dialog-icon-enter {
+  from { opacity: 0; transform: scale(.55) rotate(-16deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes dialog-content-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toast-enter {
+  from { opacity: 0; transform: translateX(34px) rotateY(-9deg) scale(.94); }
+  70% { transform: translateX(-3px) rotateY(1deg) scale(1.01); }
+  to { opacity: 1; transform: translateX(0) rotateY(0) scale(1); }
+}
+
+@keyframes toast-icon-pop {
+  from { opacity: 0; transform: scale(.5) rotate(-14deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes toast-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes onboarding-card-enter {
+  from { opacity: 0; transform: translateY(28px) scale(.9); }
+  70% { transform: translateY(-3px) scale(1.012); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes onboarding-step-enter {
+  from { opacity: 0; transform: translateX(22px) scale(.985); filter: blur(3px); }
+  to { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); }
+}
+
+@keyframes onboarding-icon-enter {
+  from { opacity: 0; transform: translateY(12px) scale(.55) rotate(-10deg); }
+  to { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+
+@keyframes progress-activate {
+  from { opacity: .45; transform: scaleX(.55); }
+  to { opacity: 1; transform: scaleX(1.08); }
+}
+
+@keyframes empty-icon-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+@keyframes detail-row-enter {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Доступность: пользователь может полностью отключить движение */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: .01ms !important;
+  }
+
+  .content > *,
+  .sidebar,
+  .titlebar,
+  .dialog,
+  .toast,
+  .onboarding-card,
+  .onboarding-content {
+    transform: none !important;
+    filter: none !important;
+  }
+}
