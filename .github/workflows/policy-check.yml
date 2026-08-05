@@ -1,0 +1,117 @@
+name: Проверка политик Veilbyte
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: policy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    name: Структура, лицензия и процесс
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+
+      - name: Проверить обязательные файлы
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(
+            README.md
+            LICENSE
+            CONTRIBUTING.md
+            SECURITY.md
+            CODE_OF_CONDUCT.md
+            CHANGELOG.md
+            REPOSITORY_POLICY.md
+            RESPONSIBLE_USE.md
+            SUPPORT.md
+            BRAND_POLICY.md
+            CONTRIBUTOR_LICENSE_AGREEMENT.md
+            .github/CODEOWNERS
+            .github/PULL_REQUEST_TEMPLATE.md
+            .github/dependabot.yml
+          )
+
+          missing=0
+          for path in "${required_files[@]}"; do
+            if [[ ! -s "$path" ]]; then
+              echo "::error file=$path::Обязательный файл отсутствует или пуст."
+              missing=1
+            fi
+          done
+
+          exit "$missing"
+
+      - name: Проверить классификацию и лицензию
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -Fq 'Public Source-Available' REPOSITORY_POLICY.md || {
+            echo '::error file=REPOSITORY_POLICY.md::Не указана обязательная классификация Public Source-Available.'
+            exit 1
+          }
+
+          grep -Fq 'NOT an open-source license' LICENSE || {
+            echo '::error file=LICENSE::Лицензия должна явно указывать, что она не является open-source лицензией.'
+            exit 1
+          }
+
+          grep -Fq 'Veilbyte Restricted Source License 1.0' LICENSE || {
+            echo '::error file=LICENSE::Не найдена утверждённая лицензия Veilbyte Restricted Source License 1.0.'
+            exit 1
+          }
+
+      - name: Проверить незаполненные маркеры
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if grep -RInE '\[(VEILBYTE_[A-Z_]+|COPYRIGHT_HOLDER|YEAR)\]' \
+            README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md \
+            REPOSITORY_POLICY.md RESPONSIBLE_USE.md SUPPORT.md BRAND_POLICY.md \
+            CONTRIBUTOR_LICENSE_AGREEMENT.md .github; then
+            echo '::error::Найдены незаполненные маркеры Policy Pack.'
+            exit 1
+          fi
+
+      - name: Проверить имя рабочей ветки
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$BASE_REF" == 'main' ]]; then
+            if [[ ! "$HEAD_REF" =~ ^(develop|release/.+|hotfix/.+)$ ]]; then
+              echo "::error::В main разрешены PR только из develop, release/* или hotfix/*. Текущая ветка: $HEAD_REF"
+              exit 1
+            fi
+          fi
+
+          if [[ "$BASE_REF" == 'develop' ]]; then
+            if [[ ! "$HEAD_REF" =~ ^(feature/.+|fix/.+|chore/.+|release/.+|hotfix/.+|dependabot/.+|main)$ ]]; then
+              echo "::error::Недопустимое имя ветки для PR в develop: $HEAD_REF"
+              exit 1
+            fi
+          fi
+
+      - name: Итог
+        run: echo 'Структура репозитория соответствует локальной политике FileScope и Policy Pack Veilbyte.'
