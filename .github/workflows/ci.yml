@@ -53,7 +53,7 @@ jobs:
           if-no-files-found: ignore
 
   windows:
-    name: Windows x64 и NSIS
+    name: Rust, Windows x64 и NSIS
     needs: quality
     runs-on: windows-latest
     steps:
@@ -70,11 +70,21 @@ jobs:
 
       - name: Установить Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - name: Установить зависимости
         run: pnpm install --no-frozen-lockfile
 
-      - name: Проверить Rust
+      - name: Проверить форматирование Rust
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --all --check
+
+      - name: Запустить тесты Rust
+        working-directory: apps/desktop/src-tauri
+        run: cargo test
+
+      - name: Проверить компиляцию Rust
         working-directory: apps/desktop/src-tauri
         run: cargo check
 
