@@ -1,10 +1,12 @@
 mod analysis;
+mod window_lifecycle;
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
+use window_lifecycle::{CloseBehavior, WindowLifecycleState};
 
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -14,9 +16,15 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+fn set_close_behavior(behavior: CloseBehavior, state: tauri::State<'_, WindowLifecycleState>) {
+    state.set_close_behavior(behavior);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(WindowLifecycleState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -25,7 +33,25 @@ pub fn run() {
             analysis::analyze_local_archive,
             analysis::analyze_url_passive,
             analysis::analyze_url_active,
+            set_close_behavior,
         ])
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let state = window.state::<WindowLifecycleState>();
+
+                match state.close_behavior() {
+                    CloseBehavior::Tray => {
+                        let _ = window.hide();
+                    }
+                    CloseBehavior::Quit => window.app_handle().exit(0),
+                }
+            }
+        })
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть FileScope", true, None::<&str>)?;
             let scan_link =
