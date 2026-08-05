@@ -1,0 +1,74 @@
+name: Публикация FileScope v0.1.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v0.1.0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Создать тег и GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Подготовить описание релиза
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          # FileScope v0.1.0
+
+          Первая публичная UI-версия desktop-приложения FileScope для Windows.
+
+          ## Основные возможности
+
+          - интерфейс на русском языке;
+          - тёмная, светлая и системная темы;
+          - onboarding первого запуска;
+          - экраны проверки ссылок, файлов, архивов и программ;
+          - демонстрационные отчёты с четырьмя уровнями риска;
+          - локальные настройки, исключения и mock-карантин;
+          - системный файловый диалог и трей;
+          - обновлённые анимации и микровзаимодействия;
+          - поддержка `prefers-reduced-motion`;
+          - русская документация и журнал изменений.
+
+          ## Важное ограничение
+
+          Версия 0.1.0 является UI-прототипом. Настоящий анализ файлов, URL, архивов и программ пока не выполняется. Реальные пользовательские файлы не удаляются, не изменяются и не отправляются во внешние сервисы.
+
+          ## Сборка
+
+          В этом релизе публикуются автоматически сформированные GitHub архивы исходного кода. Windows NSIS-установщик не прикреплён, поскольку его успешная сборка в GitHub Actions ещё не подтверждена.
+          EOF
+
+      - name: Создать тег v0.1.0
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --tags origin refs/tags/v0.1.0 >/dev/null 2>&1; then
+            echo 'Тег v0.1.0 уже существует.'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a v0.1.0 -m 'FileScope v0.1.0'
+            git push origin v0.1.0
+          fi
+
+      - name: Опубликовать Latest Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            gh release edit v0.1.0 --title 'FileScope v0.1.0' --notes-file release-notes.md --latest
+          else
+            gh release create v0.1.0 --title 'FileScope v0.1.0' --notes-file release-notes.md --latest
+          fi
