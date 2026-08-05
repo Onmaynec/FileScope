@@ -1,5 +1,6 @@
 name: Публикация FileScope v0.1.0
 
+# Повторный запуск публикации после восстановления лимитов GitHub Actions.
 on:
   push:
     branches: [main]
