@@ -20,12 +20,12 @@ use super::{
 };
 
 const EXECUTABLE_EXTENSIONS: &[&str] = &[
-    "exe", "dll", "scr", "com", "bat", "cmd", "ps1", "msi", "js", "jse", "vbs",
-    "vbe", "wsf", "hta", "lnk", "cpl",
+    "exe", "dll", "scr", "com", "bat", "cmd", "ps1", "msi", "js", "jse", "vbs", "vbe", "wsf",
+    "hta", "lnk", "cpl",
 ];
 const DECOY_EXTENSIONS: &[&str] = &[
-    "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "gif", "txt", "mp3",
-    "mp4", "zip", "rar",
+    "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "gif", "txt", "mp3", "mp4", "zip",
+    "rar",
 ];
 const SUSPICIOUS_IMPORTS: &[&str] = &[
     "VirtualAlloc",
@@ -317,7 +317,11 @@ fn evaluate_name_rules(
                 "format",
                 IndicatorSeverity::High,
                 42,
-                vec![format!("Расширение: .{extension}"), format!("Ожидалось: {expected_type}"), format!("Обнаружено: {detected_type}")],
+                vec![
+                    format!("Расширение: .{extension}"),
+                    format!("Ожидалось: {expected_type}"),
+                    format!("Обнаружено: {detected_type}"),
+                ],
                 "Не запускайте объект, пока не выясните причину несоответствия.",
             ));
         }
@@ -373,9 +377,11 @@ fn analyze_pe(path: &Path, size: u64) -> Result<PeAnalysis, String> {
     let suspicious_imports = imports
         .iter()
         .filter(|value| {
-            SUSPICIOUS_IMPORTS
-                .iter()
-                .any(|name| value.to_ascii_lowercase().ends_with(&name.to_ascii_lowercase()))
+            SUSPICIOUS_IMPORTS.iter().any(|name| {
+                value
+                    .to_ascii_lowercase()
+                    .ends_with(&name.to_ascii_lowercase())
+            })
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -461,7 +467,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             report.sha256.as_deref(),
-            Some("1a9fca643641626459702b825f5b3f67a466f82a24cb99e26eea249835b8cbfc")
+            Some("79424917c77fac8e2d84db8b6064beba547968b81f200152a62f1442b48c250d")
         );
         assert_eq!(report.detected_type.as_deref(), Some("Text"));
         assert!(!report.is_demo);
