@@ -39,7 +39,7 @@
     "longDescription": "FileScope — desktop-приложение для локального статического анализа файлов, URL и ZIP-архивов без запуска исследуемых объектов.",
     "windows": {
       "nsis": {
-        "installMode": "perUser",
+        "installMode": "currentUser",
         "languages": ["Russian"],
         "displayLanguageSelector": false
       }
