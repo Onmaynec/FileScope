@@ -1,0 +1,348 @@
+use std::{fs::File, path::PathBuf, time::Instant};
+
+use chrono::Utc;
+use serde_json::json;
+use uuid::Uuid;
+use zip::ZipArchive;
+
+use super::{
+    rules::{calculate_risk, indicator},
+    types::{
+        AnalysisLimits, AnalysisReport, ArchiveAnalysis, ArchiveEntry, IndicatorSeverity,
+        ObjectKind, ThreatIndicator,
+    },
+};
+
+const EXECUTABLE_EXTENSIONS: &[&str] = &[
+    "exe", "dll", "scr", "com", "bat", "cmd", "ps1", "msi", "js", "jse", "vbs", "vbe", "wsf",
+    "hta", "lnk", "cpl",
+];
+const ARCHIVE_EXTENSIONS: &[&str] = &["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "cab"];
+const DECOY_EXTENSIONS: &[&str] = &[
+    "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "gif", "txt", "mp3", "mp4",
+];
+
+pub fn analyze_zip(path: String, limits: AnalysisLimits) -> Result<AnalysisReport, String> {
+    let started = Instant::now();
+    let started_at = Utc::now();
+    let file_path = PathBuf::from(&path);
+    let metadata = std::fs::metadata(&file_path)
+        .map_err(|error| format!("Не удалось получить сведения об архиве: {error}"))?;
+    if !metadata.is_file() {
+        return Err("Выбранный путь не является файлом".to_string());
+    }
+    if metadata.len() > limits.maximum_file_size_bytes {
+        return Err(format!(
+            "Размер архива превышает лимит {} байт",
+            limits.maximum_file_size_bytes
+        ));
+    }
+
+    let display_name = file_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("архив.zip")
+        .to_string();
+    let file =
+        File::open(&file_path).map_err(|error| format!("Не удалось открыть ZIP-архив: {error}"))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|error| format!("Файл не является поддерживаемым ZIP-архивом: {error}"))?;
+    let mut indicators: Vec<ThreatIndicator> = Vec::new();
+    let mut entries = Vec::new();
+    let mut total_compressed = 0_u64;
+    let mut total_uncompressed = 0_u64;
+    let mut maximum_depth = 0_usize;
+    let mut nested_archives = 0_usize;
+    let mut executable_entries = 0_usize;
+    let mut suspicious_paths = 0_usize;
+    let archive_count = archive.len();
+
+    if archive_count > limits.maximum_archive_entries {
+        indicators.push(indicator(
+            "archive.entries.limit-exceeded",
+            "Слишком много элементов в архиве",
+            "Количество записей превышает установленный защитный лимит.",
+            "limits",
+            IndicatorSeverity::High,
+            45,
+            vec![
+                format!("Элементов: {archive_count}"),
+                format!("Лимит: {}", limits.maximum_archive_entries),
+            ],
+            "Не распаковывайте архив обычным проводником и уточните его происхождение.",
+        ));
+    }
+
+    let scan_count = archive_count.min(limits.maximum_archive_entries);
+    for index in 0..scan_count {
+        let entry = archive
+            .by_index(index)
+            .map_err(|error| format!("Не удалось прочитать запись ZIP #{index}: {error}"))?;
+        let name = entry.name().replace('\\', "/");
+        let depth = name.split('/').filter(|part| !part.is_empty()).count();
+        let suspicious_path = entry.enclosed_name().is_none()
+            || name.starts_with('/')
+            || name.contains("../")
+            || name.contains(":/")
+            || name.contains(':');
+        let extension = PathBuf::from(&name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let is_executable = EXECUTABLE_EXTENSIONS.contains(&extension.as_str());
+        let is_archive = ARCHIVE_EXTENSIONS.contains(&extension.as_str());
+
+        if suspicious_path {
+            suspicious_paths += 1;
+        }
+        if is_executable {
+            executable_entries += 1;
+        }
+        if is_archive {
+            nested_archives += 1;
+        }
+        maximum_depth = maximum_depth.max(depth);
+        total_compressed = total_compressed.saturating_add(entry.compressed_size());
+        total_uncompressed = total_uncompressed.saturating_add(entry.size());
+
+        if has_double_extension(&name) {
+            indicators.push(indicator(
+                "archive.entry.double-extension",
+                "Файл внутри архива маскируется двойным расширением",
+                "Запись выглядит как документ или медиафайл, но заканчивается исполняемым расширением.",
+                "archive-entry",
+                IndicatorSeverity::Critical,
+                65,
+                vec![name.clone()],
+                "Не извлекайте и не запускайте этот файл.",
+            ));
+        }
+
+        entries.push(ArchiveEntry {
+            path: name,
+            compressed_size: entry.compressed_size(),
+            uncompressed_size: entry.size(),
+            depth,
+            is_directory: entry.is_dir(),
+            is_executable,
+            is_archive,
+            suspicious_path,
+        });
+    }
+
+    let compression_ratio = if total_compressed == 0 {
+        if total_uncompressed > 0 {
+            f64::INFINITY
+        } else {
+            1.0
+        }
+    } else {
+        total_uncompressed as f64 / total_compressed as f64
+    };
+
+    if suspicious_paths > 0 {
+        let paths = entries
+            .iter()
+            .filter(|entry| entry.suspicious_path)
+            .take(20)
+            .map(|entry| entry.path.clone())
+            .collect();
+        indicators.push(indicator(
+            "archive.path-traversal",
+            "Обнаружены опасные пути внутри архива",
+            "Некоторые записи могут попытаться выйти за выбранную папку распаковки или использовать абсолютный путь.",
+            "archive-path",
+            IndicatorSeverity::Critical,
+            70,
+            paths,
+            "Не распаковывайте архив. Используйте изолированный просмотр или удалите объект.",
+        ));
+    }
+    if executable_entries > 0 {
+        indicators.push(indicator(
+            "archive.executable-content",
+            "Архив содержит исполняемые файлы",
+            "Внутри обнаружены объекты, способные запускать код или команды в Windows.",
+            "archive-content",
+            IndicatorSeverity::High,
+            34,
+            entries
+                .iter()
+                .filter(|entry| entry.is_executable)
+                .take(30)
+                .map(|entry| entry.path.clone())
+                .collect(),
+            "Проверьте каждый исполняемый файл отдельно до извлечения и запуска.",
+        ));
+    }
+    if nested_archives > 0 {
+        indicators.push(indicator(
+            "archive.nested-archives",
+            "Обнаружены вложенные архивы",
+            "Вложенные контейнеры усложняют ручную проверку и могут скрывать содержимое.",
+            "archive-content",
+            IndicatorSeverity::Medium,
+            16,
+            entries
+                .iter()
+                .filter(|entry| entry.is_archive)
+                .take(30)
+                .map(|entry| entry.path.clone())
+                .collect(),
+            "Проверяйте вложенные архивы отдельно и соблюдайте ограничения глубины.",
+        ));
+    }
+    if maximum_depth > limits.maximum_archive_depth {
+        indicators.push(indicator(
+            "archive.depth.limit-exceeded",
+            "Слишком глубокая структура архива",
+            "Глубина каталогов превышает защитный лимит.",
+            "limits",
+            IndicatorSeverity::High,
+            38,
+            vec![
+                format!("Глубина: {maximum_depth}"),
+                format!("Лимит: {}", limits.maximum_archive_depth),
+            ],
+            "Не распаковывайте архив автоматически.",
+        ));
+    }
+    if total_uncompressed > limits.maximum_archive_uncompressed_bytes {
+        indicators.push(indicator(
+            "archive.uncompressed-size.limit-exceeded",
+            "Распакованный объём превышает лимит",
+            "Суммарный заявленный размер содержимого слишком велик.",
+            "limits",
+            IndicatorSeverity::Critical,
+            65,
+            vec![
+                format!("Объём: {total_uncompressed} байт"),
+                format!("Лимит: {} байт", limits.maximum_archive_uncompressed_bytes),
+            ],
+            "Не распаковывайте архив на основной системе.",
+        ));
+    }
+    if compression_ratio.is_infinite() || compression_ratio > limits.maximum_compression_ratio {
+        indicators.push(indicator(
+            "archive.compression-ratio.suspicious",
+            "Подозрительно высокая степень сжатия",
+            "Соотношение распакованного и сжатого размера похоже на архивную бомбу.",
+            "archive-bomb",
+            IndicatorSeverity::Critical,
+            72,
+            vec![format!("Коэффициент: {compression_ratio:.1}x")],
+            "Не распаковывайте архив и удалите его, если источник не подтверждён.",
+        ));
+    }
+
+    let analysis = ArchiveAnalysis {
+        format: "ZIP".to_string(),
+        entries,
+        total_entries: archive_count,
+        total_compressed_size: total_compressed,
+        total_uncompressed_size: total_uncompressed,
+        maximum_depth,
+        compression_ratio,
+        nested_archives,
+        executable_entries,
+        suspicious_paths,
+    };
+    let (risk_score, risk_level) = calculate_risk(&indicators);
+
+    Ok(AnalysisReport {
+        id: Uuid::new_v4().to_string(),
+        object_kind: ObjectKind::Archive,
+        target: path,
+        display_name,
+        started_at: started_at.to_rfc3339(),
+        completed_at: Utc::now().to_rfc3339(),
+        duration_ms: started.elapsed().as_millis(),
+        sha256: None,
+        detected_type: Some("ZIP archive".to_string()),
+        size_bytes: Some(metadata.len()),
+        risk_level,
+        risk_score,
+        indicators,
+        metadata: json!({
+            "contentExtractedToDisk": false,
+            "entriesRead": scan_count,
+            "entryLimitApplied": scan_count < archive_count,
+        }),
+        pe: None,
+        url: None,
+        archive: Some(analysis),
+        is_demo: false,
+        limitations: vec![
+            "Содержимое записей не запускается и не извлекается на диск".to_string(),
+            "В версии 0.2.0 выполняется структурный анализ ZIP; RAR и 7Z только распознаются как тип файла".to_string(),
+        ],
+    })
+}
+
+fn has_double_extension(name: &str) -> bool {
+    let file_name = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
+    let parts = file_name.split('.').collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return false;
+    }
+    let final_extension = parts.last().copied().unwrap_or("");
+    let previous_extension = parts.get(parts.len() - 2).copied().unwrap_or("");
+    EXECUTABLE_EXTENSIONS.contains(&final_extension)
+        && DECOY_EXTENSIONS.contains(&previous_extension)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use tempfile::NamedTempFile;
+    use zip::{write::FileOptions, CompressionMethod, ZipWriter};
+
+    use super::*;
+
+    fn make_zip(entries: &[(&str, &[u8])]) -> NamedTempFile {
+        let file = NamedTempFile::new().unwrap();
+        {
+            let writer_file = file.reopen().unwrap();
+            let mut writer = ZipWriter::new(writer_file);
+            let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+            for (name, contents) in entries {
+                writer.start_file(*name, options).unwrap();
+                writer.write_all(contents).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        file
+    }
+
+    #[test]
+    fn reads_zip_without_extracting_content() {
+        let file = make_zip(&[("docs/readme.txt", b"hello")]);
+        let report = analyze_zip(
+            file.path().to_string_lossy().to_string(),
+            AnalysisLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(report.archive.unwrap().total_entries, 1);
+        assert_eq!(report.metadata["contentExtractedToDisk"], false);
+    }
+
+    #[test]
+    fn detects_executable_and_double_extension() {
+        let file = make_zip(&[("invoice.pdf.exe", b"MZbroken")]);
+        let report = analyze_zip(
+            file.path().to_string_lossy().to_string(),
+            AnalysisLimits::default(),
+        )
+        .unwrap();
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| item.id == "archive.entry.double-extension"));
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| item.id == "archive.executable-content"));
+    }
+}
