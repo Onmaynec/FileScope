@@ -14,13 +14,12 @@ use super::{
 };
 
 const EXECUTABLE_EXTENSIONS: &[&str] = &[
-    "exe", "dll", "scr", "com", "bat", "cmd", "ps1", "msi", "js", "jse", "vbs",
-    "vbe", "wsf", "hta", "lnk", "cpl",
+    "exe", "dll", "scr", "com", "bat", "cmd", "ps1", "msi", "js", "jse", "vbs", "vbe", "wsf",
+    "hta", "lnk", "cpl",
 ];
 const ARCHIVE_EXTENSIONS: &[&str] = &["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "cab"];
 const DECOY_EXTENSIONS: &[&str] = &[
-    "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "gif", "txt", "mp3",
-    "mp4",
+    "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "gif", "txt", "mp3", "mp4",
 ];
 
 pub fn analyze_zip(path: String, limits: AnalysisLimits) -> Result<AnalysisReport, String> {
@@ -44,8 +43,8 @@ pub fn analyze_zip(path: String, limits: AnalysisLimits) -> Result<AnalysisRepor
         .and_then(|value| value.to_str())
         .unwrap_or("архив.zip")
         .to_string();
-    let file = File::open(&file_path)
-        .map_err(|error| format!("Не удалось открыть ZIP-архив: {error}"))?;
+    let file =
+        File::open(&file_path).map_err(|error| format!("Не удалось открыть ZIP-архив: {error}"))?;
     let mut archive = ZipArchive::new(file)
         .map_err(|error| format!("Файл не является поддерживаемым ZIP-архивом: {error}"))?;
     let mut indicators: Vec<ThreatIndicator> = Vec::new();
@@ -133,7 +132,11 @@ pub fn analyze_zip(path: String, limits: AnalysisLimits) -> Result<AnalysisRepor
     }
 
     let compression_ratio = if total_compressed == 0 {
-        if total_uncompressed > 0 { f64::INFINITY } else { 1.0 }
+        if total_uncompressed > 0 {
+            f64::INFINITY
+        } else {
+            1.0
+        }
     } else {
         total_uncompressed as f64 / total_compressed as f64
     };
