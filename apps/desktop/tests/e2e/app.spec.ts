@@ -6,10 +6,22 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('открывается функциональный главный экран v0.2.0', async ({ page }) => {
+test('открывается функциональный главный экран v0.3.0', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Реальный анализ до запуска' })).toBeVisible();
   await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
-  await expect(page.getByText('Версия 0.2.0')).toBeVisible();
+  await expect(page.getByText('Версия 0.3.0')).toBeVisible();
+});
+
+test('настройка закрытия окна по умолчанию использует системный трей', async ({ page }) => {
+  await page.getByRole('button', { name: /Настройки/ }).click();
+  const closeBehavior = page.locator('.settings-v020 select').nth(1);
+
+  await expect(closeBehavior).toHaveValue('tray');
+  await closeBehavior.selectOption('quit');
+  await page.reload();
+  await page.getByRole('button', { name: /Настройки/ }).click();
+
+  await expect(page.locator('.settings-v020 select').nth(1)).toHaveValue('quit');
 });
 
 test('пассивный URL-анализ создаёт реальный локальный отчёт', async ({ page }) => {
