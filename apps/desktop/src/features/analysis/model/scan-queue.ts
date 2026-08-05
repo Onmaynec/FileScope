@@ -7,6 +7,7 @@ export interface AnalysisQueueItem {
   kind: ObjectKind;
   target: string;
   displayName: string;
+  activeNetwork: boolean;
   status: QueueStatus;
   createdAt: string;
   startedAt?: string;
@@ -15,12 +16,18 @@ export interface AnalysisQueueItem {
   error?: string;
 }
 
-export function createQueueItem(kind: ObjectKind, target: string, displayName: string): AnalysisQueueItem {
+export function createQueueItem(
+  kind: ObjectKind,
+  target: string,
+  displayName: string,
+  activeNetwork = false,
+): AnalysisQueueItem {
   return {
     id: queueId(),
     kind,
     target,
     displayName,
+    activeNetwork,
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
@@ -62,7 +69,8 @@ export function pendingQueueItems(queue: AnalysisQueueItem[]): AnalysisQueueItem
 }
 
 function queueIdentity(item: AnalysisQueueItem): string {
-  return `${item.kind}:${item.target.trim().toLowerCase()}`;
+  const networkMode = item.kind === 'url' && item.activeNetwork ? 'active' : 'passive';
+  return `${item.kind}:${networkMode}:${item.target.trim().toLowerCase()}`;
 }
 
 function queueId(): string {
