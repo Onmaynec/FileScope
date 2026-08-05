@@ -28,16 +28,28 @@ pub fn run() {
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть FileScope", true, None::<&str>)?;
-            let scan_link = MenuItem::with_id(app, "scan_link", "Проверить ссылку", true, None::<&str>)?;
-            let select_file = MenuItem::with_id(app, "select_file", "Выбрать файл", true, None::<&str>)?;
+            let scan_link =
+                MenuItem::with_id(app, "scan_link", "Проверить ссылку", true, None::<&str>)?;
+            let select_file =
+                MenuItem::with_id(app, "select_file", "Выбрать файл", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
-            let updates = MenuItem::with_id(app, "updates", "Проверить обновления", true, None::<&str>)?;
+            let updates =
+                MenuItem::with_id(app, "updates", "Проверить обновления", true, None::<&str>)?;
             let first_separator = PredefinedMenuItem::separator(app)?;
             let second_separator = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
-                &[&open, &first_separator, &scan_link, &select_file, &settings, &updates, &second_separator, &quit],
+                &[
+                    &open,
+                    &first_separator,
+                    &scan_link,
+                    &select_file,
+                    &settings,
+                    &updates,
+                    &second_separator,
+                    &quit,
+                ],
             )?;
 
             let app_handle = app.handle().clone();
