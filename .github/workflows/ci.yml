@@ -76,16 +76,9 @@ jobs:
       - name: Установить зависимости
         run: pnpm install --no-frozen-lockfile
 
-      - name: Отформатировать Rust-исходники
+      - name: Проверить форматирование Rust
         working-directory: apps/desktop/src-tauri
-        run: cargo fmt --all
-
-      - name: Сохранить форматированный снимок Rust
-        uses: actions/upload-artifact@v4
-        with:
-          name: FileScope-Rustfmt-Sources
-          path: apps/desktop/src-tauri/src
-          if-no-files-found: error
+        run: cargo fmt --all --check
 
       - name: Запустить тесты Rust
         working-directory: apps/desktop/src-tauri
