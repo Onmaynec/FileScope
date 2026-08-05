@@ -9,16 +9,27 @@ export interface SelectedObject {
 }
 
 export async function selectLocalObject(directory = false): Promise<SelectedObject | null> {
+  const selected = await selectLocalObjects({ directory, multiple: false });
+  return selected[0] ?? null;
+}
+
+export async function selectLocalObjects(options: { directory?: boolean; multiple?: boolean } = {}): Promise<SelectedObject[]> {
   try {
-    const selected = await open({ multiple: false, directory });
-    if (!selected || Array.isArray(selected)) return null;
-    const normalized = selected.replaceAll('\\', '/');
-    return {
-      path: selected,
-      displayName: normalized.split('/').at(-1) || selected,
-    };
+    const selected = await open({
+      multiple: options.multiple ?? true,
+      directory: options.directory ?? false,
+    });
+    if (!selected) return [];
+    const paths = Array.isArray(selected) ? selected : [selected];
+    return paths.map((path) => {
+      const normalized = path.replaceAll('\\', '/');
+      return {
+        path,
+        displayName: normalized.split('/').at(-1) || path,
+      };
+    });
   } catch {
-    return null;
+    return [];
   }
 }
 
