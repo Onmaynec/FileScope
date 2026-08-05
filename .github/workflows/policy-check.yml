@@ -21,6 +21,7 @@ jobs:
   governance:
     name: Структура, лицензия и процесс
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
@@ -45,6 +46,13 @@ jobs:
             .github/CODEOWNERS
             .github/PULL_REQUEST_TEMPLATE.md
             .github/dependabot.yml
+            .github/workflows/ci.yml
+            .github/workflows/release.yml
+            docs/governance/README.md
+            docs/governance/RELEASE_POLICY.md
+            docs/governance/AI_CONTRIBUTION_POLICY.md
+            docs/governance/GITHUB_SETTINGS_CHECKLIST.md
+            docs/releases/README.md
           )
 
           missing=0
@@ -77,6 +85,11 @@ jobs:
             exit 1
           }
 
+          grep -Fq 'Veilbyte' apps/desktop/src-tauri/tauri.conf.json || {
+            echo '::error file=apps/desktop/src-tauri/tauri.conf.json::Не указан официальный издатель Veilbyte.'
+            exit 1
+          }
+
       - name: Проверить незаполненные маркеры
         shell: bash
         run: |
@@ -85,10 +98,30 @@ jobs:
           if grep -RInE '\[(VEILBYTE_[A-Z_]+|COPYRIGHT_HOLDER|YEAR)\]' \
             README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md \
             REPOSITORY_POLICY.md RESPONSIBLE_USE.md SUPPORT.md BRAND_POLICY.md \
-            CONTRIBUTOR_LICENSE_AGREEMENT.md .github; then
+            CONTRIBUTOR_LICENSE_AGREEMENT.md .github docs/governance; then
             echo '::error::Найдены незаполненные маркеры Policy Pack.'
             exit 1
           fi
+
+      - name: Проверить релизную инфраструктуру
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if compgen -G '.github/workflows/publish-v*.yml' >/dev/null; then
+            echo '::error::.github/workflows содержит устаревший version-specific publish workflow.'
+            exit 1
+          fi
+
+          grep -Fq 'environment: production' .github/workflows/release.yml || {
+            echo '::error file=.github/workflows/release.yml::Релиз должен использовать Environment production.'
+            exit 1
+          }
+
+          grep -Fq 'permissions:' .github/workflows/ci.yml || {
+            echo '::error file=.github/workflows/ci.yml::Основной CI должен явно задавать минимальные permissions.'
+            exit 1
+          }
 
       - name: Проверить имя рабочей ветки
         if: github.event_name == 'pull_request'
