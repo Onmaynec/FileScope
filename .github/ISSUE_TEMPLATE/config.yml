@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Обсуждения Veilbyte
+    url: https://github.com/orgs/Veilbyte/discussions
+    about: Вопросы, идеи и общая помощь с использованием FileScope
+  - name: Сообщить об уязвимости
+    url: https://github.com/Veilbyte/FileScope/security/advisories/new
+    about: Не публикуйте уязвимости и чувствительные данные в Issues

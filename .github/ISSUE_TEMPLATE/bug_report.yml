@@ -1,0 +1,102 @@
+name: Ошибка FileScope
+description: Сообщить о воспроизводимой ошибке приложения
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Не публикуйте уязвимости, реальные вредоносные образцы, активные вредоносные URL и чувствительные данные. Для уязвимостей используйте GitHub Private Vulnerability Reporting.
+  - type: input
+    id: version
+    attributes:
+      label: Версия FileScope
+      placeholder: "0.2.0 / commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: distribution
+    attributes:
+      label: Способ запуска
+      options:
+        - NSIS-установщик
+        - Portable EXE
+        - Сборка из исходников
+        - Frontend dev server
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Окружение
+      placeholder: "Windows 11 24H2, x64, номер сборки"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Компонент
+      options:
+        - Интерфейс
+        - Анализ файлов
+        - Анализ URL
+        - Анализ ZIP
+        - Отчёты и экспорт
+        - Настройки и хранение
+        - Системный трей и окно
+        - Установщик или portable
+        - CI / сборка
+        - Другое
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Описание
+      description: Что произошло и как это влияет на работу?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактический результат
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Очищенные логи
+      description: Удалите имена, локальные пути, URL с секретами, IP, cookies, токены и персональные данные.
+      render: shell
+  - type: textarea
+    id: additional
+    attributes:
+      label: Дополнительные сведения
+      description: Скриншоты, частота возникновения и известный обходной путь.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Подтверждения
+      options:
+        - label: Я проверил существующие Issues и Discussions.
+          required: true
+        - label: В обращении нет уязвимости, секретов, персональных данных и неочищенных логов.
+          required: true
+        - label: Я не прикрепляю реальные вредоносные файлы или активные вредоносные URL.
+          required: true
+        - label: Обращение соответствует Responsible Use Policy.
+          required: true

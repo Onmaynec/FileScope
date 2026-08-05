@@ -2,6 +2,14 @@
   "name": "@filescope/desktop",
   "private": true,
   "version": "0.2.0",
+  "description": "FileScope Windows desktop application by Veilbyte",
+  "author": "Veilbyte",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Veilbyte/FileScope.git",
+    "directory": "apps/desktop"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

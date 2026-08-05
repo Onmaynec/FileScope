@@ -1,8 +1,12 @@
 # FileScope
 
-FileScope — desktop-приложение для Windows, предназначенное для понятной предварительной проверки ссылок, файлов и архивов до запуска.
+FileScope — desktop-приложение Veilbyte для Windows, предназначенное для понятной предварительной проверки файлов, HTTP/HTTPS URL и архивов до запуска.
 
-Актуальная версия `v0.2.0` — первая функциональная версия с реальным локальным аналитическим ядром. Исследуемые файлы не запускаются, ZIP не извлекаются на диск, а активные сетевые действия выполняются только после явного согласия пользователя.
+> **Классификация:** Public Source-Available · Active · Pre-1.0  
+> **Актуальный релиз:** `v0.2.0`  
+> **Владелец:** Veilbyte · `@Onmaynec`
+
+Исходный код доступен для просмотра и security-review, но FileScope **не является open-source проектом**. Использование, изменение, распространение, размещение и интеграция регулируются [ограниченной лицензией](LICENSE) и без отдельного письменного разрешения запрещены.
 
 ## Возможности v0.2.0
 
@@ -34,6 +38,8 @@ FileScope — desktop-приложение для Windows, предназнач�
 - настоящие вредоносные образцы в репозитории отсутствуют;
 - отсутствие обнаруженных признаков не считается абсолютной гарантией безопасности.
 
+FileScope предназначен только для законной защиты пользователя и разрешённого исследования. Подробности: [ответственное использование](RESPONSIBLE_USE.md).
+
 ## Поддерживаемый объём
 
 | Объект | v0.2.0 |
@@ -45,13 +51,20 @@ FileScope — desktop-приложение для Windows, предназнач�
 | RAR / 7Z | Распознавание формата без структурного разбора |
 | Запуск в sandbox | Не входит в v0.2.0 |
 
-## Локальный запуск
+## Установка
+
+Официальные установщики и portable-сборки публикуются только в GitHub Releases организации Veilbyte. Проверяйте тег версии и SHA-256 из файла `SHA256SUMS.txt`.
+
+Неофициальные сборки не поддерживаются и не могут использовать названия, логотипы или оформление FileScope/Veilbyte без письменного разрешения. См. [BRAND_POLICY.md](BRAND_POLICY.md).
+
+## Локальная разработка
 
 Требования:
 
 - Node.js 22;
 - pnpm 10.14;
-- Rust stable;
+- Rust stable с target `x86_64-pc-windows-msvc`;
+- Microsoft C++ Build Tools и Windows SDK;
 - системные зависимости Tauri 2 для Windows.
 
 ```bash
@@ -80,12 +93,14 @@ pnpm --filter @filescope/desktop test
 pnpm --filter @filescope/desktop build
 pnpm --filter @filescope/desktop test:e2e
 cd apps/desktop/src-tauri
-cargo fmt --check
+cargo fmt --all --check
 cargo test
 cargo check
 ```
 
-## Структура v0.2.0
+Официальная релизная сборка дополнительно проходит Tauri production build и Windows x64 NSIS packaging в GitHub Actions.
+
+## Архитектура
 
 - `apps/desktop/src/app/v020` — оболочка функциональной версии;
 - `apps/desktop/src/features/analysis` — frontend API, модели, отчёты и рабочее пространство;
@@ -94,12 +109,46 @@ cargo check
 - `docs/product` — границы версий;
 - `docs/design-system` — дизайн- и motion-система.
 
-## Ветки
+## Ветки и изменения
 
-- `main` — стабильные опубликованные версии;
-- `develop` — интеграционная ветка следующей версии;
-- `feature/*` — разработка отдельных функций;
-- `fix/*` — исправления;
-- `release/*` — подготовка релизов.
+```text
+main
+├── develop
+├── feature/*
+├── fix/*
+├── release/*
+├── hotfix/*
+└── chore/*
+```
 
-Подробности: [архитектура](docs/architecture/README.md), [дизайн-система](docs/design-system/tokens.md), [объём v0.2.0](docs/product/v0.2.0.md) и [политика безопасности](SECURITY.md).
+Прямые изменения в `main` и `develop` запрещены. Работа проходит по схеме:
+
+```text
+Issue → рабочая ветка → Pull Request → CI → Review → Merge
+```
+
+Полные правила находятся в [REPOSITORY_POLICY.md](REPOSITORY_POLICY.md) и [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Участие
+
+Перед Pull Request прочитайте:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md);
+- [CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md);
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md);
+- [SECURITY.md](SECURITY.md);
+- [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md).
+
+Вклады принимаются только через Pull Request, должны быть связаны с Issue, проходить обязательные проверки и подтверждать CLA.
+
+## Безопасность и поддержка
+
+Не публикуйте уязвимости в Issues, Discussions или обычных Pull Requests. Используйте GitHub Private Vulnerability Reporting согласно [SECURITY.md](SECURITY.md).
+
+Для воспроизводимых ошибок и запросов функций используйте Issue Forms. Общие правила поддержки описаны в [SUPPORT.md](SUPPORT.md).
+
+## Лицензия
+
+Copyright © 2026 Veilbyte and its owner. All rights reserved.
+
+FileScope распространяется по **Veilbyte Restricted Source License 1.0**. Это ограниченная source-available лицензия, а не open-source лицензия. Полные условия: [LICENSE](LICENSE).

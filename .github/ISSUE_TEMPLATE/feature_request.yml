@@ -1,0 +1,71 @@
+name: Новая функция FileScope
+description: Предложить улучшение продукта
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Предложение должно соответствовать лицензии FileScope, Responsible Use Policy и local-first принципам проекта.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Проблема пользователя
+      description: Какую конкретную проблему решает предложение?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Предлагаемое решение
+      description: Опишите пользовательский сценарий и ожидаемое поведение.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы
+      description: Какие решения или обходные пути уже рассматривались?
+  - type: dropdown
+    id: component
+    attributes:
+      label: Компонент
+      options:
+        - Анализ файлов и PE
+        - Анализ URL
+        - Анализ архивов
+        - Rule Engine и риск
+        - Очередь проверок
+        - Отчёты и экспорт
+        - Карантин
+        - Интерфейс и доступность
+        - Интеграция с Windows
+        - Обновления и CI
+        - Документация
+        - Другое
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Безопасность и приватность
+      description: Опишите сетевые действия, обработку файлов, данные, разрешения, supply chain и возможные злоупотребления.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Риски и влияние
+      description: Совместимость, производительность, ложные срабатывания, поддержка и план снижения рисков.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Подтверждения
+      options:
+        - label: Я проверил существующие Issues и Discussions.
+          required: true
+        - label: Предложение соответствует Responsible Use Policy и не направлено на несанкционированный доступ или вредоносную деятельность.
+          required: true
+        - label: Я понимаю, что отправка идеи не гарантирует её реализацию и не предоставляет прав на код FileScope.
+          required: true

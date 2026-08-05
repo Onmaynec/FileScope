@@ -1,0 +1,32 @@
+name: Документация FileScope
+description: Сообщить о неточности или предложить улучшение документации
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Страница или файл
+      placeholder: "README.md, SECURITY.md, docs/architecture/..."
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что непонятно или неверно
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Предлагаемое изменение
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Подтверждения
+      options:
+        - label: Я проверил актуальную ветку и существующие обращения.
+          required: true
+        - label: Изменение не предлагает ослабить LICENSE, SECURITY или Responsible Use Policy.
+          required: true
