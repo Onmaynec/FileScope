@@ -1,3 +1,5 @@
+mod analysis;
+
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
@@ -18,6 +20,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .invoke_handler(tauri::generate_handler![
+            analysis::analyze_local_file,
+            analysis::analyze_local_archive,
+            analysis::analyze_url_passive,
+            analysis::analyze_url_active,
+        ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть FileScope", true, None::<&str>)?;
             let scan_link = MenuItem::with_id(app, "scan_link", "Проверить ссылку", true, None::<&str>)?;
