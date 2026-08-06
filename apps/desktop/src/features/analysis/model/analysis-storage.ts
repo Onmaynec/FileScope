@@ -1,4 +1,3 @@
-
 import {
   defaultAnalysisLimits,
   type AnalysisLimits,
@@ -27,12 +26,20 @@ export async function saveReport(report: AnalysisReport): Promise<AnalysisReport
   return (await reportHistoryRepository.save(report)).reports;
 }
 
+export function deleteReportHistory(id: string): Promise<ReportHistorySnapshot> {
+  return reportHistoryRepository.delete(id);
+}
+
 export async function deleteReport(id: string): Promise<AnalysisReport[]> {
-  return (await reportHistoryRepository.delete(id)).reports;
+  return (await deleteReportHistory(id)).reports;
+}
+
+export function clearReportHistory(): Promise<ReportHistorySnapshot> {
+  return reportHistoryRepository.clear();
 }
 
 export async function clearReports(): Promise<AnalysisReport[]> {
-  return (await reportHistoryRepository.clear()).reports;
+  return (await clearReportHistory()).reports;
 }
 
 export function inspectHistoryStorage(): Promise<ReportHistorySnapshot> {
