@@ -1,6 +1,9 @@
 mod analysis;
 mod window_lifecycle;
 
+#[cfg(feature = "fuzzing")]
+pub use analysis::fuzzing;
+
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,

@@ -5,6 +5,7 @@ FileScope — desktop-приложение Veilbyte для Windows, предна
 > **Классификация:** Public Source-Available · Active · Pre-1.0  
 > **Текущая стабильная версия:** `v0.3.3`  
 > **Последний опубликованный релиз:** `v0.3.3`  
+> **Текущая версия разработки:** `v0.3.4`
 > **Владелец:** Veilbyte · `@Onmaynec`
 
 Исходный код доступен для просмотра и security-review, но FileScope **не является open-source проектом**. Использование, изменение, распространение, размещение и интеграция регулируются [ограниченной лицензией](LICENSE) и без отдельного письменного разрешения запрещены.
@@ -39,6 +40,15 @@ FileScope — desktop-приложение Veilbyte для Windows, предна
 - отдельный режим полного завершения приложения;
 - Windows release EXE без дополнительного консольного окна;
 - единый утверждённый логотип для EXE, установщика, ярлыка, окна, панели задач и трея.
+
+## Подготовка v0.3.4 к v0.4.0
+
+- storage boundary отделяет UI истории от WebView localStorage;
+- versioned envelope и migration fixtures готовят безопасный переход на Tauri storage;
+- privacy helpers и property/fuzz infrastructure закрепляют требования #42 и #49;
+- пользовательские retention/privacy settings и DPAPI остаются задачами v0.4.0.
+
+Подробности: [readiness scope v0.3.4](docs/product/v0.3.4-readiness.md).
 
 ## BugFix v0.3.3
 

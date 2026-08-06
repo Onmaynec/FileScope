@@ -179,3 +179,8 @@ PR без подтверждения CLA может быть отклонён.
 ## Документация
 
 Документация проекта, Issues, Pull Requests, коммиты и release notes ведутся на русском языке. Технические идентификаторы, имена API и общепринятые термины могут оставаться на английском.
+
+
+## Fuzzing и private triage
+
+Fuzz corpus не должен содержать malware, active malicious URLs, secrets или пользовательские файлы. Быстрые property tests обязательны для security-sensitive изменений. Потенциальный security crash оформляется через Private Vulnerability Reporting; публичный Issue допускается только после устранения чувствительных деталей и оценки affected versions.

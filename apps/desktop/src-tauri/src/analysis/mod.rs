@@ -1,6 +1,10 @@
 mod archive;
 mod file;
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 mod jobs;
+#[cfg(test)]
+mod properties;
 mod rules;
 mod types;
 mod url;

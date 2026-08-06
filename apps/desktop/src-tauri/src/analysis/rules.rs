@@ -145,8 +145,9 @@ pub fn calculate_risk(indicators: &[ThreatIndicator]) -> (u16, RiskLevel) {
 
     let score = unique
         .iter()
-        .map(|indicator| indicator.score)
-        .sum::<u16>()
+        .fold(0_u16, |total, indicator| {
+            total.saturating_add(indicator.score)
+        })
         .min(100);
 
     let has_critical = unique

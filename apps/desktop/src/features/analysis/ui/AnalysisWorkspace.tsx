@@ -251,7 +251,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
 
       try {
         const result = await runItem(item);
-        saveReport(result);
+        await saveReport(result);
         setReports((current) => ({ ...current, [result.id]: result }));
         setQueue((current) => updateQueueItem(current, item.id, {
           status: 'completed',
