@@ -1,0 +1,63 @@
+name: Одноразовая генерация lock-файлов v0.3.2
+
+on:
+  push:
+    branches: [fix/0.3.2-stability]
+    paths:
+      - '.github/workflows/generate-v032-lockfiles.yml'
+      - 'package.json'
+      - 'apps/desktop/package.json'
+      - 'packages/contracts/package.json'
+      - 'apps/desktop/src-tauri/Cargo.toml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: generate-v032-lockfiles
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Сформировать pnpm и Cargo lock-файлы
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Получить рабочую ветку
+        uses: actions/checkout@v4
+        with:
+          ref: fix/0.3.2-stability
+          fetch-depth: 0
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Установить pnpm
+        run: npm install --global pnpm@10.14.0
+
+      - name: Установить Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Сформировать pnpm-lock.yaml без build scripts
+        run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+
+      - name: Сформировать Cargo.lock
+        working-directory: apps/desktop/src-tauri
+        run: cargo generate-lockfile
+
+      - name: Зафиксировать полученные lock-файлы
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pnpm-lock.yaml
+          git add -f apps/desktop/src-tauri/Cargo.lock
+          if git diff --cached --quiet; then
+            echo 'Lock-файлы уже актуальны.'
+            exit 0
+          fi
+          git commit -m 'chore(deps): зафиксировать lock-файлы для v0.3.2'
+          git push origin HEAD:fix/0.3.2-stability
