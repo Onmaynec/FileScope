@@ -47,15 +47,17 @@ export interface ScanResult extends ReportVersionMetadata {
   objectId: string;
   status: 'ready' | 'unavailable' | 'failed';
   riskLevel: RiskLevel;
+  riskScore: number;
   summary: string;
   recommendation: string;
   createdAt: string;
   indicators: ThreatIndicator[];
-  metadata: Record<string, string>;
+  metadata: Record<string, unknown>;
   networkEvents: unknown[];
   behaviors: unknown[];
   technicalDetails: Record<string, unknown>;
   isDemo: boolean;
+  limitations: string[];
 }
 
 export interface IFileAnalysisService {
