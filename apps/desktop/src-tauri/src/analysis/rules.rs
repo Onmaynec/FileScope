@@ -25,6 +25,7 @@ pub fn indicator(
 
     deduplicate_evidence(&mut value.evidence);
     normalize_pe_indicator(&mut value);
+    normalize_analysis_status(&mut value);
     value
 }
 
@@ -64,6 +65,14 @@ fn normalize_pe_indicator(indicator: &mut ThreatIndicator) {
         }
         "pe.imports.suspicious" => normalize_sensitive_imports(indicator),
         _ => {}
+    }
+}
+
+fn normalize_analysis_status(indicator: &mut ThreatIndicator) {
+    if indicator.category == "limits" || indicator.category == "analysis-status" {
+        indicator.category = "analysis-status".to_string();
+        indicator.severity = IndicatorSeverity::Info;
+        indicator.score = 0;
     }
 }
 
@@ -137,7 +146,7 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
 }
 
 fn contributes_to_threat_score(indicator: &ThreatIndicator) -> bool {
-    indicator.category != "limits" && indicator.category != "analysis-status"
+    indicator.category != "analysis-status"
 }
 
 pub fn calculate_risk(indicators: &[ThreatIndicator]) -> (u16, RiskLevel) {
@@ -224,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn operational_limit_does_not_become_threat_verdict() {
+    fn operational_limit_is_normalized_and_does_not_become_threat_verdict() {
         let value = indicator(
             "file.size.limit-exceeded",
             "Limit",
@@ -235,6 +244,9 @@ mod tests {
             vec!["size".to_string()],
             "review",
         );
+        assert_eq!(value.category, "analysis-status");
+        assert_eq!(value.severity, IndicatorSeverity::Info);
+        assert_eq!(value.score, 0);
         assert_eq!(calculate_risk(&[value]), (0, RiskLevel::NoThreatsFound));
     }
 
