@@ -1,27 +1,23 @@
-name: Одноразовая подготовка locked-сборки v0.3.2
+name: Одноразовое завершение документации v0.3.2
 
 on:
   push:
     branches: [fix/0.3.2-stability]
     paths:
       - '.github/workflows/generate-v032-lockfiles.yml'
-      - 'package.json'
-      - 'apps/desktop/package.json'
-      - 'packages/contracts/package.json'
-      - 'apps/desktop/src-tauri/Cargo.toml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: prepare-v032-locked-build
+  group: finalize-v032-docs
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    name: Сформировать lock-файлы и обновить release-процесс
+  finalize:
+    name: Обновить CHANGELOG и CONTRIBUTING
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Получить рабочую ветку
         uses: actions/checkout@v4
@@ -29,25 +25,7 @@ jobs:
           ref: fix/0.3.2-stability
           fetch-depth: 0
 
-      - name: Установить Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Установить pnpm
-        run: npm install --global pnpm@10.14.0
-
-      - name: Установить Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Сформировать pnpm-lock.yaml без build scripts
-        run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
-
-      - name: Сформировать Cargo.lock
-        working-directory: apps/desktop/src-tauri
-        run: cargo generate-lockfile
-
-      - name: Обновить CHANGELOG, CONTRIBUTING и release workflow
+      - name: Внести детерминированные изменения
         shell: bash
         run: |
           python - <<'PY'
@@ -55,6 +33,7 @@ jobs:
 
           changelog = Path('CHANGELOG.md')
           text = changelog.read_text(encoding='utf-8')
+          marker = '## [Не выпущено]\n'
           section = '''## [0.3.2] — не выпущено
 
 ### Добавлено
@@ -83,10 +62,10 @@ jobs:
 - `pnpm doctor` не изменяет систему и не отправляет сведения во внешние сервисы;
 - новые зависимости и сетевые разрешения не добавлены.
 '''
-          marker = '## [Не выпущено]\n'
           if '## [0.3.2]' not in text:
-              text = text.replace(marker, marker + '\n' + section + '\n', 1)
-              changelog.write_text(text, encoding='utf-8')
+              if marker not in text:
+                  raise SystemExit('Не найден маркер Не выпущено в CHANGELOG.md')
+              changelog.write_text(text.replace(marker, marker + '\n' + section + '\n', 1), encoding='utf-8')
 
           contributing = Path('CONTRIBUTING.md')
           text = contributing.read_text(encoding='utf-8')
@@ -94,49 +73,18 @@ jobs:
           text = text.replace('\ncargo test\n', '\ncargo test --locked\n')
           text = text.replace('\ncargo check\n', '\ncargo check --locked\n')
           contributing.write_text(text, encoding='utf-8')
-
-          release = Path('.github/workflows/release.yml')
-          text = release.read_text(encoding='utf-8')
-          install_old = '''      - name: Установить зависимости
-                run: pnpm install --no-frozen-lockfile
-          '''
-          install_new = '''      - name: Установить фиксированные зависимости
-                run: pnpm install --frozen-lockfile
-
-              - name: Проверить неизменность pnpm-lock.yaml
-                run: git diff --exit-code -- pnpm-lock.yaml
-          '''
-          text = text.replace(install_old, install_new)
-          text = text.replace('run: cargo test\n', 'run: cargo test --locked\n')
-          text = text.replace('run: cargo check\n', 'run: cargo check --locked\n')
-          build_marker = '''      - name: Собрать desktop-приложение
-                run: pnpm --filter @filescope/desktop build:desktop
-
-              - name: Сохранить проверенную сборку
-          '''
-          build_replacement = '''      - name: Собрать desktop-приложение
-                run: pnpm --filter @filescope/desktop build:desktop
-
-              - name: Проверить неизменность lock-файлов после сборки
-                run: git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
-
-              - name: Сохранить проверенную сборку
-          '''
-          text = text.replace(build_marker, build_replacement)
-          release.write_text(text, encoding='utf-8')
           PY
 
-      - name: Зафиксировать подготовленные файлы
+      - name: Зафиксировать изменения
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add pnpm-lock.yaml CHANGELOG.md CONTRIBUTING.md .github/workflows/release.yml
-          git add -f apps/desktop/src-tauri/Cargo.lock
+          git add CHANGELOG.md CONTRIBUTING.md
           if git diff --cached --quiet; then
-            echo 'Файлы уже актуальны.'
+            echo 'Документация уже актуальна.'
             exit 0
           fi
-          git commit -m 'chore(build): завершить locked-сборку FileScope v0.3.2'
+          git commit -m 'docs(v0.3.2): обновить журнал и правила сборки'
           git push origin HEAD:fix/0.3.2-stability
