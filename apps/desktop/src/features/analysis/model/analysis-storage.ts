@@ -44,8 +44,12 @@ export function deleteReport(id: string): AnalysisReport[] {
   return next;
 }
 
-export function clearReports(): void {
-  if (typeof localStorage !== 'undefined') localStorage.removeItem(REPORTS_KEY);
+export function clearReports(): AnalysisReport[] {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(REPORTS_KEY);
+    for (const key of LEGACY_REPORT_KEYS) localStorage.removeItem(key);
+  }
+  return [];
 }
 
 export function loadAnalysisLimits(): AnalysisLimits {
