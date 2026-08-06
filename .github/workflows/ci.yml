@@ -60,7 +60,7 @@ jobs:
 
       - name: Сохранить отчёт Playwright при ошибке
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: FileScope-Playwright-Report
           path: apps/desktop/playwright-report
@@ -114,7 +114,7 @@ jobs:
         run: git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
 
       - name: Сохранить установщик и исполняемый файл
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: FileScope-Windows-x64
           path: |
