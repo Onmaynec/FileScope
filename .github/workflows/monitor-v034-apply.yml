@@ -1,0 +1,30 @@
+name: Диагностика применения FileScope v0.3.4
+
+on:
+  push:
+    branches:
+      - chore/v0.3.4-readiness
+    paths:
+      - .github/monitor-v034-trigger
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/v0.3.4-readiness
+      - name: Сохранить статусы
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --branch chore/v0.3.4-readiness --limit 10 --json databaseId,workflowName,status,conclusion,headSha,createdAt > .github/v034-apply-runs.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/v034-apply-runs.json
+          git commit -m 'chore: сохранить диагностику применения v0.3.4'
+          git push origin HEAD:chore/v0.3.4-readiness
