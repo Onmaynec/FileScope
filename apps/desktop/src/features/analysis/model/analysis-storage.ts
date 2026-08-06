@@ -126,9 +126,9 @@ export function migrateReport(value: unknown): AnalysisReport {
     riskScore: numberValue(raw.riskScore, 0),
     indicators,
     metadata: { ...metadata, migratedFromSchema: schemaVersion },
-    pe: isObject(raw.pe) ? raw.pe as AnalysisReport['pe'] : undefined,
-    url: isObject(raw.url) ? raw.url as AnalysisReport['url'] : undefined,
-    archive: isObject(raw.archive) ? raw.archive as AnalysisReport['archive'] : undefined,
+    pe: isObject(raw.pe) ? raw.pe as unknown as AnalysisReport['pe'] : undefined,
+    url: isObject(raw.url) ? raw.url as unknown as AnalysisReport['url'] : undefined,
+    archive: isObject(raw.archive) ? raw.archive as unknown as AnalysisReport['archive'] : undefined,
     isDemo: raw.isDemo === true,
     limitations: Array.isArray(raw.limitations) ? raw.limitations.filter((item): item is string => typeof item === 'string') : [],
   };
