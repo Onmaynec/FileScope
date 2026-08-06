@@ -35,6 +35,7 @@ pub fn run() {
             analysis::analyze_url_passive,
             analysis::analyze_url_active,
             analysis::cancel_analysis,
+            analysis::inspect_local_paths,
             analysis::get_analysis_metadata,
             set_close_behavior,
         ])
