@@ -39,7 +39,7 @@ test('browser preview не выдаёт ложный production verdict', async 
   await page.getByLabel('Адрес').fill('https://login@example.com/open?redirect=https%3A%2F%2Fevil.test');
   await page.getByRole('button', { name: 'Начать анализ' }).click();
 
-  await expect(page.getByText(/Browser preview не выдаёт production verdict/)).toBeVisible();
+  await expect(page.getByRole('alert').getByText(/Browser preview не выдаёт production verdict/)).toBeVisible();
   await expect(page.getByText('Реальный локальный отчёт')).toHaveCount(0);
 });
 
@@ -52,10 +52,12 @@ test('несколько URL образуют master-detail очередь', asy
   await input.fill('https://example.org/second');
   await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
 
+  const queuePane = page.locator('aside.analysis-queue-pane');
+  const detailPane = page.locator('section.analysis-detail-pane');
   await expect(page.getByRole('heading', { name: 'Очередь' })).toBeVisible();
-  await expect(page.getByLabel('Очередь проверок')).toContainText('example.com');
-  await expect(page.getByLabel('Очередь проверок')).toContainText('example.org');
-  await expect(page.getByLabel('Детали выбранного задания')).toBeVisible();
+  await expect(queuePane).toContainText('example.com');
+  await expect(queuePane).toContainText('example.org');
+  await expect(detailPane).toBeVisible();
   await expect(page.getByRole('button', { name: 'Запустить очередь (2)' })).toBeVisible();
 });
 
