@@ -1,0 +1,43 @@
+name: Одноразовая коррекция Rust URL v0.3.3
+
+on:
+  push:
+    branches: [fix/0.3.3-bugfix]
+    paths:
+      - '.github/workflows/v033-rust-url-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/0.3.3-bugfix
+          fetch-depth: 0
+      - name: Использовать уже проверенный URL текущего hop
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop/src-tauri/src/analysis/url.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '    let final_url = final_response.url().clone();\n'
+          new = '    let final_url = current.clone();\n'
+          if old not in text:
+              raise SystemExit('Response URL fragment missing')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cd apps/desktop/src-tauri
+          cargo fmt --all
+      - name: Удалить workflow и зафиксировать изменение
+        run: |
+          rm .github/workflows/v033-rust-url-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/src-tauri/src/analysis/url.rs
+          git add -u .github/workflows/v033-rust-url-fix.yml
+          git commit -m 'fix(url): использовать проверенный URL текущего hop'
+          git push origin HEAD:fix/0.3.3-bugfix
