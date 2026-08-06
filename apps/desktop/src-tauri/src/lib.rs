@@ -25,6 +25,7 @@ fn set_close_behavior(behavior: CloseBehavior, state: tauri::State<'_, WindowLif
 pub fn run() {
     tauri::Builder::default()
         .manage(WindowLifecycleState::default())
+        .manage(analysis::JobRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -33,6 +34,8 @@ pub fn run() {
             analysis::analyze_local_archive,
             analysis::analyze_url_passive,
             analysis::analyze_url_active,
+            analysis::cancel_analysis,
+            analysis::get_analysis_metadata,
             set_close_behavior,
         ])
         .on_window_event(|window, event| {
