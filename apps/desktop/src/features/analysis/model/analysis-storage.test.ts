@@ -1,6 +1,28 @@
-import { describe, expect, it } from 'vitest';
-import { migrateReport, sanitizeLimits } from './analysis-storage';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { clearReports, migrateReport, sanitizeLimits } from './analysis-storage';
 import { currentReportSchemaVersion, defaultAnalysisLimits } from './types';
+
+beforeEach(() => {
+  const values = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => {
+      values.delete(key);
+    },
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+  };
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: storage,
+  });
+});
 
 describe('лимиты анализа', () => {
   it('не позволяет полностью отключить защитные ограничения', () => {
@@ -25,6 +47,21 @@ describe('лимиты анализа', () => {
     expect(result.maximumCompressionRatio).toBeGreaterThanOrEqual(2);
     expect(result.activeUrlTimeoutMs).toBeGreaterThanOrEqual(1000);
     expect(result.activeUrlRedirectLimit).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('очистка истории', () => {
+  it('удаляет current и legacy отчёты, сохраняя backup и настройки', () => {
+    localStorage.setItem('filescope:reports:schema-1', '[{"id":"current"}]');
+    localStorage.setItem('filescope:v0.2.0:reports', '[{"id":"legacy"}]');
+    localStorage.setItem('filescope:migration-backup:v0.3.3', '{"legacy":"backup"}');
+    localStorage.setItem('filescope:limits:v1', '{"jobTimeoutMs":30000}');
+
+    expect(clearReports()).toEqual([]);
+    expect(localStorage.getItem('filescope:reports:schema-1')).toBeNull();
+    expect(localStorage.getItem('filescope:v0.2.0:reports')).toBeNull();
+    expect(localStorage.getItem('filescope:migration-backup:v0.3.3')).toBe('{"legacy":"backup"}');
+    expect(localStorage.getItem('filescope:limits:v1')).toBe('{"jobTimeoutMs":30000}');
   });
 });
 
