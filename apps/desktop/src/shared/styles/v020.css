@@ -152,3 +152,13 @@
   .analysis-progress__icon svg { animation: none; }
   .analysis-progress__track span { transition: none; }
 }
+
+/* кнопка «Очистить историю» */
+.analysis-history__clear {margin-left: auto;}
+/* подтверждение очистки */
+.analysis-history__confirmation {margin-top: 1rem;padding: 1rem 1.25rem;display: flex;align-items: center;justify-content: space-between;gap: 1rem;}
+.analysis-history__confirmation-content p {margin: 0;font-weight: 500;}
+.analysis-history__confirmation-subtext {display: block;font-size: 0.85rem;opacity: 0.7;margin-top: 0.2rem;}
+.analysis-history__confirmation-actions {display: flex;align-items: center;gap: 0.5rem;flex-shrink: 0;}
+.button.danger {background-color: var(--color-danger, #e53e3e);color: #ffffff;border: none;}
+.button.danger:hover {background-color: var(--color-danger-hover, #c53030);}
