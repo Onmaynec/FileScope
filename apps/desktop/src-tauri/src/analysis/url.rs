@@ -830,6 +830,34 @@ mod tests {
     }
 
     #[test]
+    fn corpus_normalizes_trailing_dot_default_port_and_percent_encoding() {
+        let report = analyze_url_passive(
+            "https://deep.example.co.uk.:443/a%20b?next=https%3A%2F%2Fsafe.example".to_string(),
+            &token(),
+        )
+        .unwrap();
+        let details = report.url.unwrap();
+        assert_eq!(details.ascii_host, "deep.example.co.uk");
+        assert_eq!(details.registrable_domain.as_deref(), Some("example.co.uk"));
+        assert_eq!(details.port, Some(443));
+        assert_eq!(details.subdomain_count, 1);
+        assert_eq!(details.redirect_parameters.len(), 1);
+    }
+
+    #[test]
+    fn rejects_ambiguous_numeric_and_excessively_long_urls() {
+        assert!(parse_http_url("http://2130706433/").is_err());
+        let long = format!("https://example.com/{}", "a".repeat(MAXIMUM_URL_LENGTH));
+        assert!(parse_http_url(&long).is_err());
+    }
+
+    #[test]
+    fn mapped_public_ipv6_is_allowed_but_mapped_loopback_is_blocked() {
+        assert!(!is_forbidden_ip("::ffff:93.184.216.34".parse().unwrap()));
+        assert!(is_forbidden_ip("::ffff:127.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
     fn rejects_non_http_and_bidi_urls() {
         assert!(parse_http_url("file:///etc/passwd").is_err());
         assert!(parse_http_url("https://example.com/\u{202e}exe").is_err());

@@ -655,6 +655,39 @@ mod tests {
     }
 
     #[test]
+    fn size_limit_stops_before_hashing() {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(&vec![1_u8; 2048]).unwrap();
+        let mut limits = AnalysisLimits::default();
+        limits.maximum_file_size_bytes = 1024;
+        let report =
+            analyze_file(file.path().to_string_lossy().to_string(), limits, &token()).unwrap();
+        assert_eq!(
+            report.analysis_completeness,
+            AnalysisCompleteness::StoppedByLimit
+        );
+        assert!(report.sha256.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symbolic_links() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target.bin");
+        let link = directory.path().join("link.bin");
+        std::fs::write(&target, b"content").unwrap();
+        symlink(&target, &link).unwrap();
+        let error = analyze_file(
+            link.to_string_lossy().to_string(),
+            AnalysisLimits::default(),
+            &token(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, AnalysisFailureCode::UnsupportedObject);
+    }
+
+    #[test]
     fn cancellation_stops_before_reading() {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(&vec![1_u8; 1024 * 1024]).unwrap();

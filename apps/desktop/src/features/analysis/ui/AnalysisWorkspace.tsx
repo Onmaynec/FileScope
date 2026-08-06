@@ -5,6 +5,7 @@ import {
   Globe2, ListChecks, LoaderCircle, Play, Plus, RefreshCcw, Search, Square, Trash2,
   Upload, XCircle,
 } from 'lucide-react';
+import { APP_VERSION } from '../../../shared/config/app-version';
 import { selectLocalObjects } from '../../../shared/native/native-bridge';
 import { Select } from '../../../shared/ui/Select';
 import {
@@ -86,7 +87,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('all');
   const [dropState, setDropState] = useState<DropState>('idle');
-  const [dropMessage, setDropMessage] = useState('Перетащите файлы сюда или откройте файловый диалог.');
+  const [dropMessage, setDropMessage] = useState('Перетащите файлы сюда или загрузите их вручную.');
   const [mobilePane, setMobilePane] = useState<MobilePane>('queue');
   const dropzoneRef = useRef<HTMLButtonElement>(null);
   const stopRequestedRef = useRef(false);
@@ -339,7 +340,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
     </div>
 
     <section className="card analysis-input-card">
-      <div className="card-title-row"><div><span className="analysis-kicker">FileScope Core 0.3.3</span><h2>{mode === 'file' ? 'Локальный статический анализ файлов' : mode === 'archive' ? 'Безопасный просмотр ZIP-архивов' : 'Анализ URL'}</h2><p>{mode === 'url' ? 'Пассивный разбор выполняет единый Rust core. Активная сеть включается только вручную.' : 'Можно добавить 150+ объектов: очередь и отчёт прокручиваются независимо.'}</p></div><span className="badge neutral">Реальные данные</span></div>
+      <div className="card-title-row"><div><span className="analysis-kicker">FileScope Core {APP_VERSION}</span><h2>{mode === 'file' ? 'Локальный статический анализ файлов' : mode === 'archive' ? 'Безопасный просмотр ZIP-архивов' : 'Анализ URL'}</h2><p>{mode === 'url' ? 'Пассивный разбор выполняет единый Rust core. Активная сеть включается только вручную.' : 'Можно добавить 150+ объектов: очередь и отчёт прокручиваются независимо.'}</p></div><span className="badge neutral">Реальные данные</span></div>
 
       {mode === 'url' ? <>
         <label className="field-label" htmlFor="analysis-url">Адрес</label>
