@@ -1,0 +1,77 @@
+name: Одноразовое завершение queue lifecycle v0.3.3
+
+on:
+  push:
+    branches: [fix/0.3.3-bugfix]
+    paths:
+      - '.github/workflows/v033-queue-followup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/0.3.3-bugfix
+          fetch-depth: 0
+      - name: Применить проверенные изменения очереди
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop/src/features/analysis/ui/AnalysisWorkspace.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+            (
+              "  pendingQueueItems,\n  removeFinishedQueueItems,\n  requestQueueCancellation,",
+              "  pendingQueueItems,\n  removeFinishedQueueItems,\n  requestCurrentCancellation,\n  requestQueueCancellation,",
+            ),
+            (
+              "  const stopRequestedRef = useRef(false);",
+              "  const stopRequestedRef = useRef(false);\n  const detailScrollRef = useRef<HTMLDivElement>(null);",
+            ),
+            (
+              "  const selectedReport = selectedItem?.reportId ? reports[selectedItem.reportId] : undefined;\n\n  const filteredQueue",
+              "  const selectedReport = selectedItem?.reportId ? reports[selectedItem.reportId] : undefined;\n\n  useEffect(() => {\n    if (detailScrollRef.current) detailScrollRef.current.scrollTop = 0;\n  }, [selectedId]);\n\n  const filteredQueue",
+            ),
+            (
+              """  const cancel = async () => {\n    stopRequestedRef.current = true;\n    setQueue((current) => requestQueueCancellation(current, activeId));\n    setError('');\n    if (!activeId) {\n      setRunning(false);\n      return;\n    }\n    const accepted = await cancelAnalysis(activeId);\n    if (!accepted) {\n      setQueue((current) => updateQueueItem(current, activeId, { status: 'running' }));\n      setError('Rust backend не нашёл активное задание для отмены. Дождитесь его завершения или повторите команду.');\n      stopRequestedRef.current = false;\n    }\n  };""",
+              """  const requestBackendCancellation = async (cancelPending: boolean) => {\n    if (cancelPending) stopRequestedRef.current = true;\n    setQueue((current) => cancelPending\n      ? requestQueueCancellation(current, activeId)\n      : activeId ? requestCurrentCancellation(current, activeId) : current);\n    setError('');\n    if (!activeId) {\n      if (cancelPending) setRunning(false);\n      return;\n    }\n    const accepted = await cancelAnalysis(activeId);\n    if (!accepted) {\n      setQueue((current) => updateQueueItem(current, activeId, { status: 'running' }));\n      setError('Rust backend не нашёл активное задание для отмены. Дождитесь его завершения или повторите команду.');\n      if (cancelPending) stopRequestedRef.current = false;\n    }\n  };\n\n  const cancelCurrent = () => requestBackendCancellation(false);\n  const cancelAll = () => requestBackendCancellation(true);""",
+            ),
+            (
+              """  const retryItem = (id: string) => {\n    setQueue((current) => updateQueueItem(current, id, {\n      status: 'pending',\n      startedAt: undefined,\n      completedAt: undefined,\n      reportId: undefined,\n      riskLevel: undefined,\n      riskScore: undefined,\n      error: undefined,\n    }));\n  };""",
+              """  const retryItem = (id: string) => {\n    const previous = queue.find((item) => item.id === id);\n    if (!previous) return;\n    const retry = createQueueItem(previous.kind, previous.target, previous.displayName, previous.activeNetwork);\n    setQueue((current) => current.map((item) => item.id === id ? retry : item));\n    setSelectedId(retry.id);\n  };""",
+            ),
+            (
+              """        {!running ? <button className=\"button button-primary analysis-start\" disabled={!canStart} onClick={() => void start()}><Play />{pendingCount > 0 ? `Запустить очередь (${pendingCount})` : 'Начать анализ'}</button> : <button className=\"button button-danger\" onClick={() => void cancel()}><Square />Остановить очередь</button>}""",
+              """        {!running ? <button className=\"button button-primary analysis-start\" disabled={!canStart} onClick={() => void start()}><Play />{pendingCount > 0 ? `Запустить очередь (${pendingCount})` : 'Начать анализ'}</button> : <div className=\"button-row\"><button className=\"button button-secondary\" onClick={() => void cancelCurrent()}><Square />Отменить текущее</button><button className=\"button button-danger\" onClick={() => void cancelAll()}><Square />Остановить всю очередь</button></div>}""",
+            ),
+            (
+              """            <div><strong>{selectedItem?.displayName ?? 'Выберите задание'}</strong><span>{selectedItem ? statusLabels[selectedItem.status] : 'Очередь готова к работе'}</span></div>\n            <div className=\"analysis-detail-navigation\">""",
+              """            <div><strong>{selectedItem?.displayName ?? 'Выберите задание'}</strong><span>{selectedItem ? `${statusLabels[selectedItem.status]}${selectedItem.riskScore !== undefined ? ` · риск ${selectedItem.riskScore}/100` : ''}` : 'Очередь готова к работе'}</span></div>\n            <div className=\"analysis-detail-navigation\">\n              <button className=\"button button-secondary\" disabled={!activeId} onClick={() => { if (activeId) { setSelectedId(activeId); setMobilePane('details'); } }}>К текущему</button>""",
+            ),
+            (
+              "          <div className=\"analysis-detail-scroll\">",
+              "          <div className=\"analysis-detail-scroll\" ref={detailScrollRef}>",
+            ),
+          ]
+
+          for old, new in replacements:
+            if old not in text:
+              raise SystemExit(f'Missing expected fragment: {old[:120]!r}')
+            text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Удалить workflow и зафиксировать изменения
+        run: |
+          rm .github/workflows/v033-queue-followup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/src/features/analysis/ui/AnalysisWorkspace.tsx
+          git add -u .github/workflows/v033-queue-followup.yml
+          git commit -m 'fix(queue): завершить cancellation и массовую навигацию'
+          git push origin HEAD:fix/0.3.3-bugfix
