@@ -18,7 +18,7 @@ describe('Select', () => {
     option.focus();
     fireEvent.keyDown(option, { key: 'Enter' });
     expect(onChange).toHaveBeenCalledWith('dark');
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('listbox')).toBeNull();
   });
 
   it('закрывается по Escape с возвратом фокуса', async () => {
@@ -27,6 +27,6 @@ describe('Select', () => {
     fireEvent.click(trigger);
     fireEvent.keyDown(screen.getByRole('option', { name: 'Системная' }), { key: 'Escape' });
     await Promise.resolve();
-    expect(trigger).toHaveFocus();
+    expect(document.activeElement).toBe(trigger);
   });
 });
