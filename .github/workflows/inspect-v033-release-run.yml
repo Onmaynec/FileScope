@@ -1,0 +1,45 @@
+name: Одноразовая проверка release v0.3.3
+
+on:
+  push:
+    branches: [release/0.3.3-publish]
+    paths:
+      - '.github/.inspect-v033-release-run'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.3.3-publish
+          fetch-depth: 0
+
+      - name: Получить статус release workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          gh run list \
+            --repo Veilbyte/FileScope \
+            --workflow release.yml \
+            --branch main \
+            --event push \
+            --limit 10 \
+            --json databaseId,status,conclusion,headSha,displayTitle,createdAt,updatedAt,url \
+            > .github/release-monitor-v033.json
+
+          rm -f .github/.inspect-v033-release-run
+          rm -f .github/workflows/inspect-v033-release-run.yml
+          git add -A
+          git commit -m 'chore(release): сохранить статус публикации v0.3.3'
+          git push origin HEAD:release/0.3.3-publish
