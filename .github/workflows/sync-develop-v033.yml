@@ -1,0 +1,36 @@
+name: Синхронизировать develop после v0.3.3
+
+on:
+  push:
+    branches:
+      - chore/sync-develop-after-v0.3.3
+    paths:
+      - .github/sync-develop-trigger-v033
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Получить ветку синхронизации
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: chore/sync-develop-after-v0.3.3
+
+      - name: Добавить main и удалить случайный placeholder
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git merge --no-ff origin/main -m 'chore: синхронизировать develop после v0.3.3'
+          rm -f docs/product/.v034-scope-placeholder
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: удалить случайный placeholder из develop'
+          fi
+          git push origin HEAD:chore/sync-develop-after-v0.3.3
