@@ -1,10 +1,10 @@
 {
-  "version": "0.3.1",
+  "version": "0.3.2",
   "prerelease": false,
   "approved": true,
   "requestedBy": "@Onmaynec",
-  "issue": 33,
-  "targetCommit": "e8717b89e6b422e2578deeab0183cd287627d9af",
-  "requestedAt": "2026-08-06T05:03:00Z",
-  "attempt": 1
+  "issue": 36,
+  "targetCommit": "05059ace401efdc44ab29a85718b3ee346bbb43c",
+  "requestedAt": "2026-08-06T07:32:00Z",
+  "attempt": 2
 }

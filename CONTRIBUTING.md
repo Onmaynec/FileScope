@@ -46,15 +46,22 @@ chore: обновить конфигурацию CI
 
 ## Перед созданием Pull Request
 
-Установите зависимости:
+Проверьте локальное окружение:
 
 ```bash
-pnpm install --no-frozen-lockfile
+pnpm doctor
+```
+
+Установите только зафиксированные зависимости:
+
+```bash
+pnpm install --frozen-lockfile
 ```
 
 Frontend:
 
 ```bash
+node --check scripts/doctor.mjs
 pnpm --filter @filescope/desktop lint
 pnpm --filter @filescope/desktop typecheck
 pnpm --filter @filescope/desktop test
@@ -67,22 +74,25 @@ Rust:
 ```bash
 cd apps/desktop/src-tauri
 cargo fmt --all --check
-cargo test
-cargo check
+cargo test --locked
+cargo check --locked
 ```
 
 Нативная production-сборка Windows:
 
 ```bash
 pnpm --filter @filescope/desktop build:desktop
+git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
 ```
+
+`pnpm-lock.yaml` и `apps/desktop/src-tauri/Cargo.lock` являются частью проверяемого исходного состояния. Не обновляйте их вручную и не используйте `--no-frozen-lockfile` для обычной разработки или CI. Изменение lock-файлов должно быть связано с осознанным изменением manifest-файлов и описано в PR.
 
 Результаты выполненных и пропущенных проверок обязательно указываются в Pull Request. Нельзя заявлять об успешном тесте, если он не запускался.
 
 ## Требования к коду
 
 - TypeScript strict mode;
-- Rust-код должен проходить `rustfmt`, тесты и `cargo check`;
+- Rust-код должен проходить `rustfmt`, тесты и `cargo check --locked`;
 - нативные вызовы изолируются от UI;
 - анализируемые объекты не запускаются без отдельного утверждённого дизайна sandbox;
 - пассивный URL-анализ не должен выполнять скрытые сетевые запросы;

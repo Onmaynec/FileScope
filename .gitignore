@@ -5,7 +5,6 @@ dist/
 
 # Tauri / Rust
 apps/desktop/src-tauri/target/
-Cargo.lock
 
 # Tests
 apps/desktop/playwright-report/
