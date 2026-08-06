@@ -38,39 +38,46 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           source = Path('apps/desktop/src-tauri/src/analysis/file.rs')
-          text = source.read_text(encoding='utf-8')
+          lines = source.read_text(encoding='utf-8').splitlines()
 
-          old_sha = '''        let mut file = NamedTempFile::new().unwrap();
-          file.write_all(b"FileScope test").unwrap();
-          let report = analyze_file(
-              file.path().to_string_lossy().to_string(),'''
-          new_sha = '''        let mut file = NamedTempFile::new().unwrap();
-          file.write_all(b"FileScope test").unwrap();
-          let path = file.into_temp_path();
-          let report = analyze_file(
-              path.to_string_lossy().to_string(),'''
-          if old_sha not in text:
-              raise SystemExit('SHA fixture fragment not found')
-          text = text.replace(old_sha, new_sha, 1)
+          sha_write = 'file.write_all(b"FileScope test").unwrap();'
+          limit_write = 'file.write_all(&vec![1_u8; 2048]).unwrap();'
+          fixed_sha = False
+          fixed_limit = False
 
-          old_limit = '''        let mut file = NamedTempFile::new().unwrap();
-          file.write_all(&vec![1_u8; 2048]).unwrap();
-          let mut limits = AnalysisLimits::default();
-          limits.maximum_file_size_bytes = 1024;
-          let report =
-              analyze_file(file.path().to_string_lossy().to_string(), limits, &token()).unwrap();'''
-          new_limit = '''        let mut file = NamedTempFile::new().unwrap();
-          file.write_all(&vec![1_u8; 2048]).unwrap();
-          let path = file.into_temp_path();
-          let mut limits = AnalysisLimits::default();
-          limits.maximum_file_size_bytes = 1024;
-          let report =
-              analyze_file(path.to_string_lossy().to_string(), limits, &token()).unwrap();'''
-          if old_limit not in text:
-              raise SystemExit('size-limit fixture fragment not found')
-          source.write_text(text.replace(old_limit, new_limit, 1), encoding='utf-8')
+          for index, line in enumerate(lines):
+              if line.strip() == sha_write:
+                  indent = line[:len(line) - len(line.lstrip())]
+                  if index + 1 < len(lines) and lines[index + 1].strip() != 'let path = file.into_temp_path();':
+                      lines.insert(index + 1, indent + 'let path = file.into_temp_path();')
+                  for target in range(index + 1, min(index + 8, len(lines))):
+                      if 'file.path().to_string_lossy().to_string(),' in lines[target]:
+                          lines[target] = lines[target].replace('file.path()', 'path')
+                          fixed_sha = True
+                          break
+                  break
+
+          for index, line in enumerate(lines):
+              if line.strip() == limit_write:
+                  indent = line[:len(line) - len(line.lstrip())]
+                  if index + 1 < len(lines) and lines[index + 1].strip() != 'let path = file.into_temp_path();':
+                      lines.insert(index + 1, indent + 'let path = file.into_temp_path();')
+                  for target in range(index + 1, min(index + 10, len(lines))):
+                      if 'analyze_file(file.path().to_string_lossy().to_string(),' in lines[target]:
+                          lines[target] = lines[target].replace('file.path()', 'path')
+                          fixed_limit = True
+                          break
+                  break
+
+          if not fixed_sha:
+              raise SystemExit('SHA fixture call not found')
+          if not fixed_limit:
+              raise SystemExit('size-limit fixture call not found')
+
+          source.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
           temporary = Path('.github/workflows/v033-test-handle-fix.yml')
           if temporary.exists():
@@ -79,15 +86,24 @@ jobs:
           workflow = Path('.github/workflows/ci.yml')
           ci = workflow.read_text(encoding='utf-8')
           ci = ci.replace('permissions:\n  contents: write\n', 'permissions:\n  contents: read\n', 1)
-          begin = '  # BEGIN TEMP V033 WINDOWS FIXTURE REPAIR\n'
-          end = '  # END TEMP V033 WINDOWS FIXTURE REPAIR\n'
-          start = ci.index(begin)
-          finish = ci.index(end, start) + len(end)
-          ci = ci[:start] + ci[finish:]
-          ci = ci.replace('  quality:\n    needs: repair-windows-tests\n', '  quality:\n', 1)
-          ci = ci.replace(
-              '      - name: Получить исходный код\n        uses: actions/checkout@v4\n        with:\n          ref: ${{ github.head_ref }}\n',
-              '      - name: Получить исходный код\n        uses: actions/checkout@v4\n',
+
+          output = []
+          skipping = False
+          for line in ci.splitlines():
+              if line == '  # BEGIN TEMP V033 WINDOWS FIXTURE REPAIR':
+                  skipping = True
+                  continue
+              if line == '  # END TEMP V033 WINDOWS FIXTURE REPAIR':
+                  skipping = False
+                  continue
+              if not skipping:
+                  output.append(line)
+          ci = '\n'.join(output) + '\n'
+          ci = ci.replace('    needs: repair-windows-tests\n', '', 1)
+          ci = re.sub(
+              r'(?m)(      - name: Получить исходный код\n        uses: actions/checkout@v4)\n        with:\n          ref: [^\n]+\n',
+              r'\1\n',
+              ci,
           )
           workflow.write_text(ci, encoding='utf-8')
           PY
