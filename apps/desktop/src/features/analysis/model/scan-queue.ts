@@ -59,6 +59,12 @@ export function updateQueueItem(
   return queue.map((item) => item.id === id ? { ...item, ...patch } : item);
 }
 
+export function requestCurrentCancellation(queue: AnalysisQueueItem[], activeId: string): AnalysisQueueItem[] {
+  return queue.map((item) => item.id === activeId && item.status === 'running'
+    ? { ...item, status: 'cancelling' }
+    : item);
+}
+
 export function requestQueueCancellation(queue: AnalysisQueueItem[], activeId: string | null): AnalysisQueueItem[] {
   const completedAt = new Date().toISOString();
   return queue.map((item) => {
