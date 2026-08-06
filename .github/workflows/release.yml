@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Получить исходный код
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -152,7 +152,7 @@ jobs:
           }
 
       - name: Установить Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@2499707fd4a732959b4cb45a1fe1044823aa9084 # v6.5.0
         with:
           node-version: 22
 
@@ -198,10 +198,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Установить Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@2499707fd4a732959b4cb45a1fe1044823aa9084 # v6.5.0
         with:
           node-version: 22
 
@@ -209,8 +209,9 @@ jobs:
         run: npm install --global pnpm@10.14.0
 
       - name: Установить Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # pinned revision
         with:
+          toolchain: stable
           components: rustfmt
 
       - name: Установить фиксированные зависимости
@@ -241,7 +242,7 @@ jobs:
         run: git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
 
       - name: Сохранить проверенную сборку
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FileScope-${{ needs.validate.outputs.version }}-Windows-x64
           path: |
@@ -262,12 +263,12 @@ jobs:
       contents: write
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Скачать проверенную сборку
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: FileScope-${{ needs.validate.outputs.version }}-Windows-x64
           path: release-artifact
