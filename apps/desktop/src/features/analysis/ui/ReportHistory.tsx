@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, FileJson2, LoaderCircle, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { clearReportHistory, deleteReportHistory, loadReportHistory } from '../model/analysis-storage';
-import type { HistoryStorageStatus } from '../model/history-repository';
+import type { HistoryStorageStatus, ReportHistorySnapshot } from '../model/history-repository';
 import { riskLabels, type AnalysisReport, type ObjectKind, type RiskLevel } from '../model/types';
 import { ReportView } from './ReportView';
 
@@ -17,6 +17,12 @@ export function ReportHistory() {
   const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false);
   const cancelClearRef = useRef<HTMLButtonElement>(null);
 
+  const applySnapshot = useCallback((snapshot: ReportHistorySnapshot) => {
+    setReports(snapshot.reports);
+    setStorageStatus(snapshot.status);
+    setStorageMessage(snapshot.message ?? '');
+  }, []);
+
   useEffect(() => {
     let active = true;
     void loadReportHistory().then((snapshot) => {
@@ -25,17 +31,11 @@ export function ReportHistory() {
       setLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [applySnapshot]);
 
   useEffect(() => {
     if (clearConfirmationOpen) cancelClearRef.current?.focus();
   }, [clearConfirmationOpen]);
-
-  const applySnapshot = (snapshot: Awaited<ReturnType<typeof loadReportHistory>>) => {
-    setReports(snapshot.reports);
-    setStorageStatus(snapshot.status);
-    setStorageMessage(snapshot.message ?? '');
-  };
 
   const filtered = useMemo(
     () => reports.filter((report) => {
