@@ -111,6 +111,7 @@ impl JobToken {
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
         self.notify.notify_waiters();
+        self.notify.notify_one();
     }
 
     pub fn is_cancelled(&self) -> bool {
@@ -132,10 +133,16 @@ impl JobToken {
     }
 
     pub async fn cancelled(&self) {
-        if self.is_cancelled() {
-            return;
+        loop {
+            if self.is_cancelled() {
+                return;
+            }
+            let notified = self.notify.notified();
+            if self.is_cancelled() {
+                return;
+            }
+            notified.await;
         }
-        self.notify.notified().await;
     }
 }
 
@@ -186,7 +193,10 @@ impl JobRegistry {
 
     #[cfg(test)]
     pub fn active_count(&self) -> usize {
-        self.jobs.lock().map(|jobs| jobs.len()).unwrap_or_default()
+        self.jobs
+            .lock()
+            .map(|jobs| jobs.len())
+            .unwrap_or_default()
     }
 }
 
@@ -206,5 +216,17 @@ mod tests {
         );
         registry.finish("job-1");
         assert_eq!(registry.active_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn async_waiter_does_not_miss_cancellation() {
+        let token = Arc::new(JobToken::new(5_000));
+        let waiter = token.clone();
+        let task = tokio::spawn(async move { waiter.cancelled().await });
+        token.cancel();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("waiter must receive cancellation")
+            .expect("waiter task must complete");
     }
 }
