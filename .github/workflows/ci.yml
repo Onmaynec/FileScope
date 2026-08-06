@@ -40,6 +40,9 @@ jobs:
       - name: Проверить синтаксис doctor
         run: node --check scripts/doctor.mjs
 
+      - name: Проверить версии manifests и production UI
+        run: pnpm check:version
+
       - name: Проверить ESLint
         run: pnpm --filter @filescope/desktop lint
 
@@ -94,6 +97,9 @@ jobs:
 
       - name: Проверить неизменность pnpm-lock.yaml
         run: git diff --exit-code -- pnpm-lock.yaml
+
+      - name: Проверить версии manifests и production UI
+        run: pnpm check:version
 
       - name: Проверить форматирование Rust
         working-directory: apps/desktop/src-tauri
