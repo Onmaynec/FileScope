@@ -1,16 +1,20 @@
 mod analysis;
+#[cfg(not(feature = "fuzzing"))]
 mod window_lifecycle;
 
 #[cfg(feature = "fuzzing")]
 pub use analysis::fuzzing;
 
+#[cfg(not(feature = "fuzzing"))]
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
+#[cfg(not(feature = "fuzzing"))]
 use window_lifecycle::{CloseBehavior, WindowLifecycleState};
 
+#[cfg(not(feature = "fuzzing"))]
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -19,11 +23,13 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
+#[cfg(not(feature = "fuzzing"))]
 #[tauri::command]
 fn set_close_behavior(behavior: CloseBehavior, state: tauri::State<'_, WindowLifecycleState>) {
     state.set_close_behavior(behavior);
 }
 
+#[cfg(not(feature = "fuzzing"))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
