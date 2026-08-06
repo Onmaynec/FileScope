@@ -1,4 +1,3 @@
-
 import { APP_VERSION } from '../../../shared/config/app-version';
 import {
   currentReportSchemaVersion,
@@ -67,12 +66,22 @@ export function migrateReport(value: unknown): AnalysisReport {
     metadata: { ...metadata, migratedFromSchema: schemaVersion },
     pe: isObject(raw.pe) ? raw.pe as unknown as AnalysisReport['pe'] : undefined,
     url: isObject(raw.url) ? raw.url as unknown as AnalysisReport['url'] : undefined,
-    archive: isObject(raw.archive) ? raw.archive as unknown as AnalysisReport['archive'] : undefined,
+    archive: migrateArchive(raw.archive),
     isDemo: raw.isDemo === true,
     limitations: Array.isArray(raw.limitations)
       ? raw.limitations.filter((item): item is string => typeof item === 'string')
       : [],
   };
+}
+
+function migrateArchive(value: unknown): AnalysisReport['archive'] {
+  if (!isObject(value)) return undefined;
+  const ratio = optionalNumber(value.compressionRatio);
+  return {
+    ...value,
+    compressionRatio: ratio ?? 0,
+    compressionRatioInfinite: value.compressionRatioInfinite === true || value.compressionRatio === null,
+  } as unknown as AnalysisReport['archive'];
 }
 
 function unsupportedFutureReport(raw: Record<string, unknown>, schemaVersion: number): AnalysisReport {
