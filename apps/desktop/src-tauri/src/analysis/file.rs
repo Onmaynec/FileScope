@@ -58,11 +58,14 @@ pub fn analyze_file(
     let started_at = Utc::now();
     let file_path = PathBuf::from(&path);
 
+    if is_unc_path(&path) {
+        return Err(AnalysisFailure::new(
+            AnalysisFailureCode::UnsupportedObject,
+            "UNC и сетевые пути не анализируются в v0.3.3: удалённая файловая система не гарантирует локальную семантику identity и share mode.",
+        ));
+    }
     reject_special_path(&file_path)?;
-    let mut file = OpenOptions::new()
-        .read(true)
-        .open(&file_path)
-        .map_err(|error| AnalysisFailure::io(format!("Не удалось открыть файл: {error}")))?;
+    let mut file = open_file_for_analysis(&file_path)?;
     let metadata_before = file.metadata().map_err(|error| {
         AnalysisFailure::io(format!(
             "Не удалось получить сведения об открытом файле: {error}"
@@ -314,7 +317,9 @@ pub fn analyze_file(
             "bytesHashed": total_read,
             "bytesBufferedForParser": parser_bytes.len(),
             "identityCheck": "opened-handle-size-and-modified-time",
-            "reparsePointAllowed": false
+            "reparsePointAllowed": false,
+            "windowsShareMode": "FILE_SHARE_READ only; write/delete sharing denied",
+            "networkPathPolicy": "UNC rejected"
         }),
         pe: pe_analysis,
         url: None,
@@ -325,6 +330,40 @@ pub fn analyze_file(
             "Отсутствие обнаруженных признаков не гарантирует абсолютную безопасность".to_string(),
         ],
     })
+}
+
+#[cfg(windows)]
+fn open_file_for_analysis(path: &Path) -> Result<File, AnalysisFailure> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ: u32 = 0x00000001;
+    OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(path)
+        .map_err(|error| {
+            AnalysisFailure::io(format!(
+                "Не удалось открыть файл для стабильного чтения: {error}"
+            ))
+        })
+}
+
+#[cfg(not(windows))]
+fn open_file_for_analysis(path: &Path) -> Result<File, AnalysisFailure> {
+    OpenOptions::new().read(true).open(path).map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось открыть файл для стабильного чтения: {error}"
+        ))
+    })
+}
+
+#[cfg(windows)]
+fn is_unc_path(path: &str) -> bool {
+    path.starts_with(r"\\") || path.starts_with("//")
+}
+
+#[cfg(not(windows))]
+fn is_unc_path(_path: &str) -> bool {
+    false
 }
 
 fn reject_special_path(path: &Path) -> Result<(), AnalysisFailure> {
