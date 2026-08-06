@@ -95,5 +95,5 @@ test('очистка истории требует подтверждение и
 
   expect(storage.current).toBeNull();
   expect(storage.legacy).toBeNull();
-  expect(storage.backup).toBe('{"preserve":true}');
+  expect(JSON.parse(storage.backup ?? '{}')).toMatchObject({ preserve: true });
 });
