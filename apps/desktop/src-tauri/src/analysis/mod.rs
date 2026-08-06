@@ -35,17 +35,20 @@ pub async fn analyze_local_file(
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
     let limits = limits.unwrap_or_default().validated()?;
+    let applied_limits = limits.clone();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let joined =
         tauri::async_runtime::spawn_blocking(move || file::analyze_file(path, limits, &token))
             .await;
     registry.finish(&job_id);
-    joined.map_err(|error| {
+    let mut report = joined.map_err(|error| {
         AnalysisFailure::new(
             jobs::AnalysisFailureCode::Internal,
             format!("Фоновое файловое задание завершилось аварийно: {error}"),
         )
-    })?
+    })??;
+    attach_applied_limits(&mut report, &applied_limits);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -56,17 +59,20 @@ pub async fn analyze_local_archive(
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
     let limits = limits.unwrap_or_default().validated()?;
+    let applied_limits = limits.clone();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let joined =
         tauri::async_runtime::spawn_blocking(move || archive::analyze_zip(path, limits, &token))
             .await;
     registry.finish(&job_id);
-    joined.map_err(|error| {
+    let mut report = joined.map_err(|error| {
         AnalysisFailure::new(
             jobs::AnalysisFailureCode::Internal,
             format!("Фоновое архивное задание завершилось аварийно: {error}"),
         )
-    })?
+    })??;
+    attach_applied_limits(&mut report, &applied_limits);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -90,10 +96,13 @@ pub async fn analyze_url_active(
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
     let limits = limits.unwrap_or_default().validated()?;
+    let applied_limits = limits.clone();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let result = url::analyze_url_active(url, limits, &token).await;
     registry.finish(&job_id);
-    result
+    let mut report = result?;
+    attach_applied_limits(&mut report, &applied_limits);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -118,6 +127,24 @@ pub fn get_analysis_metadata() -> Value {
         "analyzerVersion": types::ANALYZER_VERSION,
         "ruleSetVersion": types::RULE_SET_VERSION,
     })
+}
+
+fn attach_applied_limits(report: &mut AnalysisReport, limits: &AnalysisLimits) {
+    let applied = json!({
+        "maximumFileSizeBytes": limits.maximum_file_size_bytes,
+        "maximumReadBytes": limits.maximum_read_bytes,
+        "maximumParserMemoryBytes": limits.maximum_parser_memory_bytes,
+        "jobTimeoutMs": limits.job_timeout_ms,
+        "maximumArchiveEntries": limits.maximum_archive_entries,
+        "maximumArchiveUncompressedBytes": limits.maximum_archive_uncompressed_bytes,
+        "maximumArchiveDepth": limits.maximum_archive_depth,
+        "maximumCompressionRatio": limits.maximum_compression_ratio,
+        "activeUrlTimeoutMs": limits.active_url_timeout_ms,
+        "activeUrlRedirectLimit": limits.active_url_redirect_limit,
+    });
+    if let Some(metadata) = report.metadata.as_object_mut() {
+        metadata.insert("appliedLimits".to_string(), applied);
+    }
 }
 
 fn inspect_local_path(path: String, archive_only: bool) -> LocalObjectCandidate {
