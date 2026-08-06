@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 
 export interface SelectOption<Value extends string> {
@@ -23,6 +23,11 @@ export function Select<Value extends string>({ label, value, options, onChange, 
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(selectedIndex);
 
+  const close = useCallback((restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus());
+  }, []);
+
   useEffect(() => setActiveIndex(selectedIndex), [selectedIndex]);
   useEffect(() => {
     if (!open) return;
@@ -41,12 +46,7 @@ export function Select<Value extends string>({ label, value, options, onChange, 
       document.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('resize', onResize);
     };
-  }, [open]);
-
-  const close = (restoreFocus: boolean) => {
-    setOpen(false);
-    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus());
-  };
+  }, [close, open]);
 
   const choose = (index: number) => {
     const option = options[index];
