@@ -1,4 +1,3 @@
-
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   clearReports,
@@ -94,6 +93,7 @@ describe('миграция отчётов', () => {
       ...sampleReport('legacy-1'),
       schemaVersion: undefined,
       appVersion: undefined,
+      createdBy: undefined,
       indicators: [{
         id: 'legacy.indicator', title: 'Legacy', description: 'Legacy indicator',
         category: 'legacy', severity: 'low', score: 12, evidence: ['evidence'], recommendation: 'review',
