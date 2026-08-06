@@ -34,6 +34,12 @@ jobs:
         with:
           components: rustfmt
 
+      - name: Исправить и проверить одноразовый генератор
+        shell: bash
+        run: |
+          sed -i '1455s/\\n"$/\\n"""/' scripts/apply-v034-readiness.py
+          python -m py_compile scripts/apply-v034-readiness.py
+
       - name: Применить детерминированные изменения
         run: python scripts/apply-v034-readiness.py
 
@@ -53,7 +59,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git reset -- .github/workflows/apply-v034-readiness.yml .github/apply-v034-trigger scripts/apply-v034-readiness.py
+          git reset -- .github/workflows/apply-v034-readiness.yml .github/apply-v034-trigger scripts/apply-v034-readiness.py .github/workflows/monitor-v034-apply.yml .github/monitor-v034-trigger .github/v034-apply-runs.json
           git diff --cached --check
           git commit -m 'chore: подготовить FileScope v0.3.4 к v0.4.0'
           git push origin HEAD:chore/v0.3.4-readiness
