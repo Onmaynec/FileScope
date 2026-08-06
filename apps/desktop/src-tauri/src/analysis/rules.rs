@@ -136,24 +136,33 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
         "Учитывайте цифровую подпись, источник файла и сочетание с другими признаками.".to_string();
 }
 
+fn contributes_to_threat_score(indicator: &ThreatIndicator) -> bool {
+    indicator.category != "limits" && indicator.category != "analysis-status"
+}
+
 pub fn calculate_risk(indicators: &[ThreatIndicator]) -> (u16, RiskLevel) {
     let mut seen = HashSet::new();
     let unique = indicators
         .iter()
         .filter(|indicator| seen.insert(indicator_key(indicator)))
         .collect::<Vec<_>>();
+    let scoring = unique
+        .iter()
+        .copied()
+        .filter(|indicator| contributes_to_threat_score(indicator))
+        .collect::<Vec<_>>();
 
-    let score = unique
+    let score = scoring
         .iter()
         .fold(0_u16, |total, indicator| {
             total.saturating_add(indicator.score)
         })
         .min(100);
 
-    let has_critical = unique
+    let has_critical = scoring
         .iter()
         .any(|indicator| indicator.severity == IndicatorSeverity::Critical);
-    let has_high = unique
+    let has_high = scoring
         .iter()
         .any(|indicator| indicator.severity == IndicatorSeverity::High);
 
@@ -212,6 +221,21 @@ mod tests {
             vec![],
         )];
         assert_eq!(calculate_risk(&values).1, RiskLevel::NoThreatsFound);
+    }
+
+    #[test]
+    fn operational_limit_does_not_become_threat_verdict() {
+        let value = indicator(
+            "file.size.limit-exceeded",
+            "Limit",
+            "Limit",
+            "limits",
+            IndicatorSeverity::High,
+            45,
+            vec!["size".to_string()],
+            "review",
+        );
+        assert_eq!(calculate_risk(&[value]), (0, RiskLevel::NoThreatsFound));
     }
 
     #[test]
