@@ -1,0 +1,124 @@
+/* Интеграция Issues #58 и #59 поверх FileScope 0.3.3. */
+
+.analysis-history__clear {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.analysis-history__confirmation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-color: rgba(239, 68, 68, .42);
+  background: color-mix(in srgb, #ef4444 7%, var(--surface));
+}
+
+.analysis-history__confirmation-content {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.analysis-history__confirmation-content p {
+  margin: 0;
+  color: var(--secondary);
+  line-height: 1.5;
+}
+
+.analysis-history__confirmation-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/*
+ * Виртуализатор использует шаг 76px, а карточка имеет высоту 70px.
+ * Поэтому содержимое должно оставаться строго внутри этой геометрии.
+ */
+.analysis-queue-item__status {
+  flex: 0 0 46px;
+  width: 46px;
+}
+
+.analysis-queue-item__body {
+  align-self: stretch;
+  min-height: 0;
+  gap: 1px;
+  padding: 4px 3px;
+  overflow: hidden;
+}
+
+.analysis-queue-item__body strong {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 13px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.analysis-queue-item__body span,
+.analysis-queue-item__body small {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.analysis-queue-item > .icon-button {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  margin-right: 2px;
+}
+
+.analysis-queue-item > .icon-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+@media (max-width: 1050px) {
+  .analysis-history__clear {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .analysis-history__confirmation {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .analysis-history__confirmation-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 560px) {
+  .analysis-history__confirmation-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .analysis-history__confirmation-actions .button {
+    width: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .analysis-queue-item.selected {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .analysis-history__confirmation {
+    border: 2px solid CanvasText;
+  }
+}
