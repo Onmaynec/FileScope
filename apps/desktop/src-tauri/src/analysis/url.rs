@@ -55,8 +55,8 @@ const DANGEROUS_PATH_EXTENSIONS: &[&str] = &[
     ".exe", ".scr", ".msi", ".bat", ".cmd", ".ps1", ".js", ".vbs", ".hta", ".lnk",
 ];
 const MULTI_LABEL_PUBLIC_SUFFIXES: &[&str] = &[
-    "co.uk", "org.uk", "gov.uk", "ac.uk", "com.au", "net.au", "org.au", "co.jp", "co.nz",
-    "com.br", "com.cn", "com.sg", "com.tr", "co.in", "co.za", "com.mx", "com.ua", "com.pl",
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "com.au", "net.au", "org.au", "co.jp", "co.nz", "com.br",
+    "com.cn", "com.sg", "com.tr", "co.in", "co.za", "com.mx", "com.ua", "com.pl",
 ];
 
 pub fn analyze_url_passive(
@@ -158,12 +158,12 @@ pub async fn analyze_url_active(
         let Some(location) = response.headers().get(LOCATION) else {
             break response;
         };
-        let location = location
-            .to_str()
-            .map_err(|_| AnalysisFailure::network("Redirect содержит некорректный заголовок Location."))?;
-        let next = current
-            .join(location)
-            .map_err(|error| AnalysisFailure::network(format!("Некорректный redirect URL: {error}")))?;
+        let location = location.to_str().map_err(|_| {
+            AnalysisFailure::network("Redirect содержит некорректный заголовок Location.")
+        })?;
+        let next = current.join(location).map_err(|error| {
+            AnalysisFailure::network(format!("Некорректный redirect URL: {error}"))
+        })?;
         validate_active_target(&next, Some(&current))?;
         redirect_count += 1;
         current = next;
@@ -311,7 +311,9 @@ async fn resolve_public_addresses(
     addresses.sort();
     addresses.dedup();
     if addresses.is_empty() {
-        return Err(AnalysisFailure::network("DNS не вернул ни одного IP-адреса."));
+        return Err(AnalysisFailure::network(
+            "DNS не вернул ни одного IP-адреса.",
+        ));
     }
     if addresses.iter().any(|address| is_forbidden_ip(*address)) {
         return Err(AnalysisFailure::security(
@@ -340,9 +342,11 @@ fn pinned_client(
     if matches!(target.host(), Some(Host::Domain(_))) {
         builder = builder.resolve(host, SocketAddr::new(address, port));
     }
-    builder
-        .build()
-        .map_err(|error| AnalysisFailure::network(format!("Не удалось создать защищённый сетевой клиент: {error}")))
+    builder.build().map_err(|error| {
+        AnalysisFailure::network(format!(
+            "Не удалось создать защищённый сетевой клиент: {error}"
+        ))
+    })
 }
 
 async fn send_probe(
@@ -427,7 +431,9 @@ fn parse_http_url(input: &str) -> Result<Url, AnalysisFailure> {
         ));
     }
     if parsed.host().is_none() {
-        return Err(AnalysisFailure::invalid("URL не содержит домен или IP-адрес."));
+        return Err(AnalysisFailure::invalid(
+            "URL не содержит домен или IP-адрес.",
+        ));
     }
     Ok(parsed)
 }
@@ -542,7 +548,10 @@ fn build_passive_details(
             16,
             vec![
                 format!("Поддоменов: {subdomain_count}"),
-                format!("Registrable domain: {}", registrable_domain.as_deref().unwrap_or("не определён")),
+                format!(
+                    "Registrable domain: {}",
+                    registrable_domain.as_deref().unwrap_or("не определён")
+                ),
             ],
             "Проверяйте registrable domain и источник ссылки.",
         ));

@@ -783,11 +783,12 @@ dependencies = [
 
 [[package]]
 name = "filescope"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "chrono",
  "goblin",
  "hex",
+ "idna",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

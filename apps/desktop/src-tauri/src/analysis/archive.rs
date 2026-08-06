@@ -33,20 +33,24 @@ pub fn analyze_zip(
     let started = Instant::now();
     let started_at = Utc::now();
     let file_path = PathBuf::from(&path);
-    let metadata = std::fs::symlink_metadata(&file_path)
-        .map_err(|error| AnalysisFailure::io(format!("Не удалось получить сведения об архиве: {error}")))?;
+    let metadata = std::fs::symlink_metadata(&file_path).map_err(|error| {
+        AnalysisFailure::io(format!("Не удалось получить сведения об архиве: {error}"))
+    })?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(AnalysisFailure::new(
             AnalysisFailureCode::UnsupportedObject,
             "Для анализа архива требуется обычный локальный файл, а не каталог или ссылка.",
         ));
     }
-    if metadata.len() > limits.maximum_file_size_bytes || metadata.len() > limits.maximum_read_bytes {
+    if metadata.len() > limits.maximum_file_size_bytes || metadata.len() > limits.maximum_read_bytes
+    {
         return Err(AnalysisFailure::new(
             AnalysisFailureCode::ReadLimit,
             format!(
                 "Размер архива превышает защитный лимит {} байт.",
-                limits.maximum_file_size_bytes.min(limits.maximum_read_bytes)
+                limits
+                    .maximum_file_size_bytes
+                    .min(limits.maximum_read_bytes)
             ),
         ));
     }
@@ -59,7 +63,9 @@ pub fn analyze_zip(
     let file = File::open(&file_path)
         .map_err(|error| AnalysisFailure::io(format!("Не удалось открыть ZIP-архив: {error}")))?;
     let mut archive = ZipArchive::new(file).map_err(|error| {
-        AnalysisFailure::parse(format!("Файл не является поддерживаемым ZIP-архивом: {error}"))
+        AnalysisFailure::parse(format!(
+            "Файл не является поддерживаемым ZIP-архивом: {error}"
+        ))
     })?;
     let mut indicators: Vec<ThreatIndicator> = Vec::new();
     let mut entries = Vec::new();

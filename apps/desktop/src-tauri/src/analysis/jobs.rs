@@ -147,14 +147,20 @@ pub struct JobRegistry {
 impl JobRegistry {
     pub fn start(&self, job_id: &str, timeout_ms: u64) -> Result<Arc<JobToken>, AnalysisFailure> {
         if job_id.trim().is_empty() || job_id.len() > 160 {
-            return Err(AnalysisFailure::invalid("Некорректный идентификатор задания."));
+            return Err(AnalysisFailure::invalid(
+                "Некорректный идентификатор задания.",
+            ));
         }
-        let mut jobs = self
-            .jobs
-            .lock()
-            .map_err(|_| AnalysisFailure::new(AnalysisFailureCode::Internal, "Registry заданий недоступен."))?;
+        let mut jobs = self.jobs.lock().map_err(|_| {
+            AnalysisFailure::new(
+                AnalysisFailureCode::Internal,
+                "Registry заданий недоступен.",
+            )
+        })?;
         if jobs.contains_key(job_id) {
-            return Err(AnalysisFailure::invalid("Задание с таким идентификатором уже выполняется."));
+            return Err(AnalysisFailure::invalid(
+                "Задание с таким идентификатором уже выполняется.",
+            ));
         }
         let token = Arc::new(JobToken::new(timeout_ms));
         jobs.insert(job_id.to_string(), token.clone());
@@ -194,7 +200,10 @@ mod tests {
         let token = registry.start("job-1", 5_000).unwrap();
         assert_eq!(registry.active_count(), 1);
         assert!(registry.cancel("job-1"));
-        assert_eq!(token.checkpoint().unwrap_err().code, AnalysisFailureCode::Cancelled);
+        assert_eq!(
+            token.checkpoint().unwrap_err().code,
+            AnalysisFailureCode::Cancelled
+        );
         registry.finish("job-1");
         assert_eq!(registry.active_count(), 0);
     }

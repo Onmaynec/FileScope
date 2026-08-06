@@ -63,9 +63,11 @@ pub fn analyze_file(
         .read(true)
         .open(&file_path)
         .map_err(|error| AnalysisFailure::io(format!("Не удалось открыть файл: {error}")))?;
-    let metadata_before = file
-        .metadata()
-        .map_err(|error| AnalysisFailure::io(format!("Не удалось получить сведения об открытом файле: {error}")))?;
+    let metadata_before = file.metadata().map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось получить сведения об открытом файле: {error}"
+        ))
+    })?;
     if !metadata_before.is_file() {
         return Err(AnalysisFailure::new(
             AnalysisFailureCode::UnsupportedObject,
@@ -160,9 +162,11 @@ pub fn analyze_file(
     }
 
     token.checkpoint()?;
-    let metadata_after = file
-        .metadata()
-        .map_err(|error| AnalysisFailure::io(format!("Не удалось повторно проверить открытый файл: {error}")))?;
+    let metadata_after = file.metadata().map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось повторно проверить открытый файл: {error}"
+        ))
+    })?;
     if file_changed(&metadata_before, &metadata_after) || total_read != metadata_before.len() {
         return Err(AnalysisFailure::file_changed());
     }
@@ -324,8 +328,11 @@ pub fn analyze_file(
 }
 
 fn reject_special_path(path: &Path) -> Result<(), AnalysisFailure> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| AnalysisFailure::io(format!("Не удалось проверить тип выбранного объекта: {error}")))?;
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось проверить тип выбранного объекта: {error}"
+        ))
+    })?;
     if metadata.file_type().is_symlink() || is_reparse_point(&metadata) {
         return Err(AnalysisFailure::new(
             AnalysisFailureCode::UnsupportedObject,

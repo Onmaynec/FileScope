@@ -32,15 +32,16 @@ pub async fn analyze_local_file(
 ) -> Result<AnalysisReport, AnalysisFailure> {
     let limits = limits.unwrap_or_default();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
-    let joined = tauri::async_runtime::spawn_blocking(move || file::analyze_file(path, limits, &token)).await;
+    let joined =
+        tauri::async_runtime::spawn_blocking(move || file::analyze_file(path, limits, &token))
+            .await;
     registry.finish(&job_id);
-    joined
-        .map_err(|error| {
-            AnalysisFailure::new(
-                jobs::AnalysisFailureCode::Internal,
-                format!("Фоновое файловое задание завершилось аварийно: {error}"),
-            )
-        })?
+    joined.map_err(|error| {
+        AnalysisFailure::new(
+            jobs::AnalysisFailureCode::Internal,
+            format!("Фоновое файловое задание завершилось аварийно: {error}"),
+        )
+    })?
 }
 
 #[tauri::command]
@@ -52,15 +53,16 @@ pub async fn analyze_local_archive(
 ) -> Result<AnalysisReport, AnalysisFailure> {
     let limits = limits.unwrap_or_default();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
-    let joined = tauri::async_runtime::spawn_blocking(move || archive::analyze_zip(path, limits, &token)).await;
+    let joined =
+        tauri::async_runtime::spawn_blocking(move || archive::analyze_zip(path, limits, &token))
+            .await;
     registry.finish(&job_id);
-    joined
-        .map_err(|error| {
-            AnalysisFailure::new(
-                jobs::AnalysisFailureCode::Internal,
-                format!("Фоновое архивное задание завершилось аварийно: {error}"),
-            )
-        })?
+    joined.map_err(|error| {
+        AnalysisFailure::new(
+            jobs::AnalysisFailureCode::Internal,
+            format!("Фоновое архивное задание завершилось аварийно: {error}"),
+        )
+    })?
 }
 
 #[tauri::command]
