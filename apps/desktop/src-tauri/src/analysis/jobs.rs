@@ -19,6 +19,8 @@ pub enum AnalysisFailureCode {
     ReadLimit,
     MemoryLimit,
     EntryLimit,
+    FileChanged,
+    UnsupportedObject,
     SecurityBlocked,
     InvalidInput,
     Io,
@@ -74,6 +76,13 @@ impl AnalysisFailure {
 
     pub fn security(message: impl Into<String>) -> Self {
         Self::new(AnalysisFailureCode::SecurityBlocked, message)
+    }
+
+    pub fn file_changed() -> Self {
+        Self::new(
+            AnalysisFailureCode::FileChanged,
+            "Файл изменился во время проверки. Результат не сформирован, потому что SHA-256 и структура могли относиться к разным состояниям объекта.",
+        )
     }
 }
 
