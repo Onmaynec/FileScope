@@ -1,6 +1,32 @@
 export type ObjectKind = 'file' | 'url' | 'archive';
 export type RiskLevel = 'noThreatsFound' | 'caution' | 'highRisk' | 'dangerous';
 export type IndicatorSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+export type AnalysisCompleteness = 'complete' | 'partial' | 'stoppedByLimit' | 'failed';
+export type AnalysisFailureCode =
+  | 'cancelled'
+  | 'timeout'
+  | 'readLimit'
+  | 'memoryLimit'
+  | 'entryLimit'
+  | 'fileChanged'
+  | 'unsupportedObject'
+  | 'securityBlocked'
+  | 'invalidInput'
+  | 'io'
+  | 'parse'
+  | 'network'
+  | 'internal';
+
+export interface AnalysisCommandError {
+  code: AnalysisFailureCode;
+  message: string;
+}
+
+export interface CreatedBy {
+  platform: string;
+  architecture: string;
+  runtime: string;
+}
 
 export interface ThreatIndicator {
   id: string;
@@ -33,6 +59,9 @@ export interface UrlAnalysis {
   normalizedUrl: string;
   scheme: string;
   host: string;
+  asciiHost: string;
+  unicodeHost: string;
+  registrableDomain?: string;
   port?: number;
   path: string;
   queryParameters: number;
@@ -74,6 +103,12 @@ export interface ArchiveAnalysis {
 }
 
 export interface AnalysisReport {
+  schemaVersion: number;
+  appVersion: string;
+  analyzerVersion: string;
+  ruleSetVersion: string;
+  createdBy: CreatedBy;
+  analysisCompleteness: AnalysisCompleteness;
   id: string;
   objectKind: ObjectKind;
   target: string;
@@ -97,6 +132,9 @@ export interface AnalysisReport {
 
 export interface AnalysisLimits {
   maximumFileSizeBytes: number;
+  maximumReadBytes: number;
+  maximumParserMemoryBytes: number;
+  jobTimeoutMs: number;
   maximumArchiveEntries: number;
   maximumArchiveUncompressedBytes: number;
   maximumArchiveDepth: number;
@@ -105,8 +143,13 @@ export interface AnalysisLimits {
   activeUrlRedirectLimit: number;
 }
 
+export const currentReportSchemaVersion = 1;
+
 export const defaultAnalysisLimits: AnalysisLimits = {
   maximumFileSizeBytes: 512 * 1024 * 1024,
+  maximumReadBytes: 512 * 1024 * 1024,
+  maximumParserMemoryBytes: 128 * 1024 * 1024,
+  jobTimeoutMs: 120_000,
   maximumArchiveEntries: 10_000,
   maximumArchiveUncompressedBytes: 2 * 1024 * 1024 * 1024,
   maximumArchiveDepth: 12,

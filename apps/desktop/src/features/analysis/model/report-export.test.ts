@@ -3,6 +3,12 @@ import { renderReportHtml } from './report-export';
 import type { AnalysisReport } from './types';
 
 const report: AnalysisReport = {
+  schemaVersion: 1,
+  appVersion: '0.3.3',
+  analyzerVersion: '1.1',
+  ruleSetVersion: '2026.08.06.1',
+  createdBy: { platform: 'windows', architecture: 'x86_64', runtime: 'tauri-desktop' },
+  analysisCompleteness: 'complete',
   id: 'test-report',
   objectKind: 'file',
   target: 'C:/test/<script>.exe',
@@ -19,9 +25,13 @@ const report: AnalysisReport = {
 };
 
 describe('HTML-экспорт', () => {
-  it('экранирует пользовательские значения', () => {
-    const html = renderReportHtml(report);
+  it('экранирует пользовательские значения и показывает версии', () => {
+    const html = renderReportHtml(report, 'abc123');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;.exe');
     expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('FileScope v0.3.3');
+    expect(html).toContain('Schema:</strong> 1');
+    expect(html).toContain('abc123');
+    expect(html).toContain('не подписан цифровой подписью');
   });
 });

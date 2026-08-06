@@ -18,6 +18,9 @@ export function AnalysisSettings({ value, onChange }: AnalysisSettingsProps) {
     <section className="card"><div className="card-title-row"><div><h2>Лимиты локального анализа</h2><p>Ограничения защищают устройство от чрезмерного потребления памяти, времени и дискового пространства.</p></div><ShieldCheck /></div>
       <div className="analysis-settings-grid">
         <NumberSetting label="Максимальный размер файла" suffix="МБ" value={Math.round(draft.maximumFileSizeBytes / 1024 / 1024)} minimum={1} maximum={4096} onChange={(next) => update('maximumFileSizeBytes', next * 1024 * 1024)} />
+        <NumberSetting label="Бюджет чтения задания" suffix="МБ" value={Math.round(draft.maximumReadBytes / 1024 / 1024)} minimum={1} maximum={4096} onChange={(next) => update('maximumReadBytes', next * 1024 * 1024)} />
+        <NumberSetting label="Бюджет памяти parser" suffix="МБ" value={Math.round(draft.maximumParserMemoryBytes / 1024 / 1024)} minimum={8} maximum={512} onChange={(next) => update('maximumParserMemoryBytes', next * 1024 * 1024)} />
+        <NumberSetting label="Таймаут одного задания" suffix="сек." value={Math.round(draft.jobTimeoutMs / 1000)} minimum={5} maximum={1800} onChange={(next) => update('jobTimeoutMs', next * 1000)} />
         <NumberSetting label="Максимум записей ZIP" suffix="шт." value={draft.maximumArchiveEntries} minimum={10} maximum={100000} onChange={(next) => update('maximumArchiveEntries', next)} />
         <NumberSetting label="Максимальный объём после распаковки" suffix="МБ" value={Math.round(draft.maximumArchiveUncompressedBytes / 1024 / 1024)} minimum={10} maximum={20480} onChange={(next) => update('maximumArchiveUncompressedBytes', next * 1024 * 1024)} />
         <NumberSetting label="Максимальная глубина ZIP" suffix="уровней" value={draft.maximumArchiveDepth} minimum={1} maximum={64} onChange={(next) => update('maximumArchiveDepth', next)} />
@@ -27,7 +30,7 @@ export function AnalysisSettings({ value, onChange }: AnalysisSettingsProps) {
       </div>
       <div className="button-row"><button className="button button-primary" onClick={save}><Save />Сохранить настройки</button><button className="button button-secondary" onClick={reset}><RotateCcw />Вернуть безопасные значения</button></div>
     </section>
-    <section className="info-banner warning"><ShieldCheck /><div><strong>Ограничения нельзя отключить полностью</strong><span>FileScope не распаковывает ZIP на диск и не запускает исследуемые файлы. Повышайте лимиты только для объектов из проверенного источника.</span></div></section>
+    <section className="info-banner warning"><ShieldCheck /><div><strong>Ограничения нельзя отключить полностью</strong><span>Отмена, таймаут, бюджет чтения и памяти контролируются Rust backend. Повышайте лимиты только для объектов из проверенного источника.</span></div></section>
   </div>;
 }
 
