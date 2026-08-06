@@ -156,6 +156,28 @@ describe('миграция отчётов', () => {
     expect(migrated.createdBy.runtime).toBe('legacy-storage');
   });
 
+  it('нормализует legacy null compressionRatio в явное infinite-состояние', () => {
+    const migrated = migrateReport({
+      ...sampleReport('legacy-zip'),
+      objectKind: 'archive',
+      archive: {
+        format: 'ZIP',
+        entries: [],
+        totalEntries: 1,
+        totalCompressedSize: 0,
+        totalUncompressedSize: 10,
+        maximumDepth: 1,
+        compressionRatio: null,
+        nestedArchives: 0,
+        executableEntries: 0,
+        suspiciousPaths: 0,
+      },
+    });
+    expect(migrated.archive?.compressionRatio).toBe(0);
+    expect(migrated.archive?.compressionRatioInfinite).toBe(true);
+    expect(JSON.stringify(migrated)).not.toContain('"compressionRatio":null');
+  });
+
   it('открывает будущую schema только в безопасном read-only режиме', () => {
     const migrated = migrateReport({ schemaVersion: 99, id: 'future', displayName: 'future report' });
     expect(migrated.analysisCompleteness).toBe('failed');
