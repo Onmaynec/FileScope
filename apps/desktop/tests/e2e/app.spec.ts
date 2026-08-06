@@ -61,6 +61,22 @@ test('несколько URL образуют master-detail очередь', asy
   await expect(page.getByRole('button', { name: 'Запустить очередь (2)' })).toBeVisible();
 });
 
+test('duplicate URL выбирает существующую строку и не создаёт несуществующий selectedId', async ({ page }) => {
+  await page.getByRole('button', { name: 'Ссылки', exact: true }).click();
+  const input = page.getByLabel('Адрес');
+  const value = 'https://example.com/duplicate';
+
+  await input.fill(value);
+  await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
+  await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
+
+  await expect(page.getByRole('button', { name: 'Запустить очередь (1)' })).toBeVisible();
+  await expect(page.getByText('Объект уже находится в активной очереди. Выбрана существующая строка.')).toBeVisible();
+  const detailPane = page.locator('section.analysis-detail-pane');
+  await expect(detailPane).toContainText('example.com');
+  await expect(detailPane).not.toContainText('Выберите задание');
+});
+
 test('фильтры очереди используют доступные listbox', async ({ page }) => {
   await page.getByRole('button', { name: 'Ссылки', exact: true }).click();
   await page.getByLabel('Адрес').fill('https://example.com/first');
