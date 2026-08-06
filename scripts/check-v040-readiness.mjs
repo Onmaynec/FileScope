@@ -70,9 +70,15 @@ if (existsSync(fuzzWorkflowPath)) {
 }
 
 for (const workflow of walk(join(root, '.github/workflows'))) {
+  const rel = relative(root, workflow).replaceAll('\\', '/');
   const text = readFileSync(workflow, 'utf8');
   for (const oldAction of ['actions/checkout@v4', 'actions/setup-node@v4', 'actions/upload-artifact@v4', 'actions/download-artifact@v4']) {
-    if (text.includes(oldAction)) errors.push(`${relative(root, workflow)}: deprecated ${oldAction}`);
+    if (text.includes(oldAction)) errors.push(`${rel}: deprecated ${oldAction}`);
+  }
+  for (const line of text.split(/\r?\n/)) {
+    const action = line.match(/^\s*uses:\s*([^\s#]+)/)?.[1];
+    if (!action || action.startsWith('./')) continue;
+    if (!/@[0-9a-f]{40}$/.test(action)) errors.push(`${rel}: mutable external action ref ${action}`);
   }
 }
 
