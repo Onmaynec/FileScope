@@ -622,8 +622,9 @@ mod tests {
     fn calculates_real_sha256_and_detects_text_from_one_handle() {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(b"FileScope test").unwrap();
+        let path = file.into_temp_path();
         let report = analyze_file(
-            file.path().to_string_lossy().to_string(),
+            path.to_string_lossy().to_string(),
             AnalysisLimits::default(),
             &token(),
         )
@@ -658,10 +659,10 @@ mod tests {
     fn size_limit_stops_before_hashing() {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(&vec![1_u8; 2048]).unwrap();
+        let path = file.into_temp_path();
         let mut limits = AnalysisLimits::default();
         limits.maximum_file_size_bytes = 1024;
-        let report =
-            analyze_file(file.path().to_string_lossy().to_string(), limits, &token()).unwrap();
+        let report = analyze_file(path.to_string_lossy().to_string(), limits, &token()).unwrap();
         assert_eq!(
             report.analysis_completeness,
             AnalysisCompleteness::StoppedByLimit
