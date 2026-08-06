@@ -51,3 +51,5 @@ jobs:
           git add -u .github/.integration-placeholder docs/worklogs/v0.3.3-integration.md scripts/integrate-clear-history-and-queue-ui.py
           git commit -m 'fix(ui): интегрировать очистку истории и исправить очередь'
           git push origin HEAD:integration/clear-history-and-queue-ui
+
+# trigger: workflow existed in parent commit
