@@ -1,4 +1,4 @@
-name: Одноразовая генерация lock-файлов v0.3.2
+name: Одноразовая подготовка locked-сборки v0.3.2
 
 on:
   push:
@@ -14,12 +14,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: generate-v032-lockfiles
+  group: prepare-v032-locked-build
   cancel-in-progress: false
 
 jobs:
-  generate:
-    name: Сформировать pnpm и Cargo lock-файлы
+  prepare:
+    name: Сформировать lock-файлы и обновить release-процесс
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -47,17 +47,96 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo generate-lockfile
 
-      - name: Зафиксировать полученные lock-файлы
+      - name: Обновить CHANGELOG, CONTRIBUTING и release workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          section = '''## [0.3.2] — не выпущено
+
+### Добавлено
+
+- команда `pnpm doctor` для локальной проверки Node.js, pnpm, Rust, Cargo, MSVC, Windows SDK, WebView2 и свободного места;
+- копирование краткого результата проверки вместе с уровнем риска, форматом и SHA-256;
+- явный статус частичного анализа для RAR, 7Z, повреждённых PE и остановки защитным лимитом.
+
+### Исправлено
+
+- одинаковые PE-import evidence нормализуются и отображаются один раз;
+- повтор одного и того же индикатора с одинаковыми доказательствами больше не увеличивает итоговую оценку;
+- сообщения об ошибках чтения файлов, защитных лимитов, ZIP, DNS и timeout стали понятнее;
+- наличие таблицы Authenticode больше не формулируется как проверенная доверенная подпись.
+
+### Сборка
+
+- добавлены и отслеживаются `pnpm-lock.yaml` и `apps/desktop/src-tauri/Cargo.lock`;
+- CI и release workflow используют `pnpm install --frozen-lockfile`;
+- Rust-тесты и `cargo check` выполняются с `--locked`;
+- после установки и production-сборки проверяется неизменность lock-файлов.
+
+### Безопасность
+
+- дедупликация не ослабляет полные injection- и download-and-execute комбинации;
+- `pnpm doctor` не изменяет систему и не отправляет сведения во внешние сервисы;
+- новые зависимости и сетевые разрешения не добавлены.
+'''
+          marker = '## [Не выпущено]\n'
+          if '## [0.3.2]' not in text:
+              text = text.replace(marker, marker + '\n' + section + '\n', 1)
+              changelog.write_text(text, encoding='utf-8')
+
+          contributing = Path('CONTRIBUTING.md')
+          text = contributing.read_text(encoding='utf-8')
+          text = text.replace('pnpm install --no-frozen-lockfile', 'pnpm install --frozen-lockfile')
+          text = text.replace('\ncargo test\n', '\ncargo test --locked\n')
+          text = text.replace('\ncargo check\n', '\ncargo check --locked\n')
+          contributing.write_text(text, encoding='utf-8')
+
+          release = Path('.github/workflows/release.yml')
+          text = release.read_text(encoding='utf-8')
+          install_old = '''      - name: Установить зависимости
+                run: pnpm install --no-frozen-lockfile
+          '''
+          install_new = '''      - name: Установить фиксированные зависимости
+                run: pnpm install --frozen-lockfile
+
+              - name: Проверить неизменность pnpm-lock.yaml
+                run: git diff --exit-code -- pnpm-lock.yaml
+          '''
+          text = text.replace(install_old, install_new)
+          text = text.replace('run: cargo test\n', 'run: cargo test --locked\n')
+          text = text.replace('run: cargo check\n', 'run: cargo check --locked\n')
+          build_marker = '''      - name: Собрать desktop-приложение
+                run: pnpm --filter @filescope/desktop build:desktop
+
+              - name: Сохранить проверенную сборку
+          '''
+          build_replacement = '''      - name: Собрать desktop-приложение
+                run: pnpm --filter @filescope/desktop build:desktop
+
+              - name: Проверить неизменность lock-файлов после сборки
+                run: git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
+
+              - name: Сохранить проверенную сборку
+          '''
+          text = text.replace(build_marker, build_replacement)
+          release.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Зафиксировать подготовленные файлы
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add pnpm-lock.yaml
+          git add pnpm-lock.yaml CHANGELOG.md CONTRIBUTING.md .github/workflows/release.yml
           git add -f apps/desktop/src-tauri/Cargo.lock
           if git diff --cached --quiet; then
-            echo 'Lock-файлы уже актуальны.'
+            echo 'Файлы уже актуальны.'
             exit 0
           fi
-          git commit -m 'chore(deps): зафиксировать lock-файлы для v0.3.2'
+          git commit -m 'chore(build): завершить locked-сборку FileScope v0.3.2'
           git push origin HEAD:fix/0.3.2-stability
