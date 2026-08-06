@@ -13,13 +13,13 @@ test('открывается функциональный главный экр�
 });
 
 test('кнопка загрузки файлов использует понятный текст', async ({ page }) => {
-  await page.getByRole('button', { name: /Файлы/ }).click();
+  await page.getByRole('button', { name: 'Файлы', exact: true }).click();
   await expect(page.getByText('Загрузить файлы', { exact: true })).toBeVisible();
   await expect(page.getByText('Открыть файловый диалог', { exact: true })).toHaveCount(0);
 });
 
 test('кастомный select доступен с клавиатуры и сохраняет настройку', async ({ page }) => {
-  await page.getByRole('button', { name: /Настройки/ }).click();
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   const closeBehavior = page.getByRole('button', { name: 'Поведение при закрытии' });
 
   await expect(page.getByText('Версия приложения')).toBeVisible();
@@ -29,13 +29,13 @@ test('кастомный select доступен с клавиатуры и со
   await closeBehavior.press('Enter');
   await page.getByRole('option', { name: 'Закрывать полностью' }).press('Enter');
   await page.reload();
-  await page.getByRole('button', { name: /Настройки/ }).click();
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 
   await expect(page.getByRole('button', { name: 'Поведение при закрытии' })).toContainText('Закрывать полностью');
 });
 
 test('browser preview не выдаёт ложный production verdict', async ({ page }) => {
-  await page.getByRole('button', { name: /Ссылки/ }).click();
+  await page.getByRole('button', { name: 'Ссылки', exact: true }).click();
   await page.getByLabel('Адрес').fill('https://login@example.com/open?redirect=https%3A%2F%2Fevil.test');
   await page.getByRole('button', { name: 'Начать анализ' }).click();
 
@@ -44,7 +44,7 @@ test('browser preview не выдаёт ложный production verdict', async 
 });
 
 test('несколько URL образуют master-detail очередь', async ({ page }) => {
-  await page.getByRole('button', { name: /Ссылки/ }).click();
+  await page.getByRole('button', { name: 'Ссылки', exact: true }).click();
   const input = page.getByLabel('Адрес');
 
   await input.fill('https://example.com/first');
@@ -62,7 +62,7 @@ test('несколько URL образуют master-detail очередь', asy
 });
 
 test('фильтры очереди используют доступные listbox', async ({ page }) => {
-  await page.getByRole('button', { name: /Ссылки/ }).click();
+  await page.getByRole('button', { name: 'Ссылки', exact: true }).click();
   await page.getByLabel('Адрес').fill('https://example.com/first');
   await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
 
@@ -74,10 +74,10 @@ test('фильтры очереди используют доступные list
 });
 
 test('синий текст светлой темы остаётся читаемым на светлых поверхностях', async ({ page }) => {
-  await page.getByRole('button', { name: /Настройки/ }).click();
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await page.getByRole('button', { name: 'Тема приложения' }).click();
   await page.getByRole('option', { name: 'Светлая' }).click();
-  await page.getByRole('button', { name: /Главная/ }).click();
+  await page.getByRole('button', { name: 'Главная', exact: true }).click();
 
   const checkedText = [
     page.locator('.info-banner strong'),
