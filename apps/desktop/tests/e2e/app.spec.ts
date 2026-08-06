@@ -6,10 +6,10 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('открывается функциональный главный экран v0.3.3', async ({ page }) => {
+test('открывается функциональный главный экран v0.3.4', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Реальный анализ до запуска' })).toBeVisible();
   await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
-  await expect(page.getByText('Версия 0.3.3')).toBeVisible();
+  await expect(page.getByText('Версия 0.3.4')).toBeVisible();
 });
 
 test('кнопка загрузки файлов использует понятный текст', async ({ page }) => {
@@ -23,7 +23,7 @@ test('кастомный select доступен с клавиатуры и со
   const closeBehavior = page.getByRole('button', { name: 'Поведение при закрытии' });
 
   await expect(page.getByText('Версия приложения')).toBeVisible();
-  await expect(page.getByText('0.3.3', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.3.4', { exact: true })).toBeVisible();
   await expect(closeBehavior).toContainText('Сворачивать в трей');
   await closeBehavior.focus();
   await closeBehavior.press('Enter');
