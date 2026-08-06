@@ -69,6 +69,15 @@ fn normalize_pe_indicator(indicator: &mut ThreatIndicator) {
 }
 
 fn normalize_analysis_status(indicator: &mut ThreatIndicator) {
+    if indicator.id == "url.host.many-subdomains" {
+        indicator.title = "Приближённая оценка числа поддоменов".to_string();
+        indicator.description = "FileScope v0.3.4 использует ограниченный встроенный список сложных public suffix. До перехода на полный offline Public Suffix List эта оценка является информационной и не влияет на Risk Score.".to_string();
+        indicator.recommendation = "Проверяйте полный hostname вручную. Каноническое определение registrable domain отслеживается в Issue #68.".to_string();
+        indicator.category = "analysis-status".to_string();
+        indicator.severity = IndicatorSeverity::Info;
+        indicator.score = 0;
+        return;
+    }
     if indicator.category == "limits" || indicator.category == "analysis-status" {
         indicator.category = "analysis-status".to_string();
         indicator.severity = IndicatorSeverity::Info;
@@ -247,6 +256,25 @@ mod tests {
         assert_eq!(value.category, "analysis-status");
         assert_eq!(value.severity, IndicatorSeverity::Info);
         assert_eq!(value.score, 0);
+        assert_eq!(calculate_risk(&[value]), (0, RiskLevel::NoThreatsFound));
+    }
+
+    #[test]
+    fn approximate_subdomain_count_does_not_raise_threat_score() {
+        let value = indicator(
+            "url.host.many-subdomains",
+            "Many subdomains",
+            "Approximate registrable domain",
+            "hostname",
+            IndicatorSeverity::Medium,
+            16,
+            vec!["Поддоменов: 5".to_string(), "Registrable domain: example.co.uk".to_string()],
+            "review",
+        );
+        assert_eq!(value.category, "analysis-status");
+        assert_eq!(value.severity, IndicatorSeverity::Info);
+        assert_eq!(value.score, 0);
+        assert!(value.description.contains("Public Suffix List"));
         assert_eq!(calculate_risk(&[value]), (0, RiskLevel::NoThreatsFound));
     }
 
