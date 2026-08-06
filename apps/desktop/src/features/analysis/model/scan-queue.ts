@@ -1,6 +1,6 @@
-import type { AnalysisReport, ObjectKind } from './types';
+import type { ObjectKind, RiskLevel } from './types';
 
-export type QueueStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type QueueStatus = 'pending' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface AnalysisQueueItem {
   id: string;
@@ -12,7 +12,9 @@ export interface AnalysisQueueItem {
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
-  report?: AnalysisReport;
+  reportId?: string;
+  riskLevel?: RiskLevel;
+  riskScore?: number;
   error?: string;
 }
 
@@ -36,7 +38,7 @@ export function createQueueItem(
 export function appendUniqueQueueItems(current: AnalysisQueueItem[], next: AnalysisQueueItem[]): AnalysisQueueItem[] {
   const existing = new Set(
     current
-      .filter((item) => item.status === 'pending' || item.status === 'running')
+      .filter((item) => item.status === 'pending' || item.status === 'running' || item.status === 'cancelling')
       .map(queueIdentity),
   );
   const result = [...current];
@@ -57,19 +59,33 @@ export function updateQueueItem(
   return queue.map((item) => item.id === id ? { ...item, ...patch } : item);
 }
 
-export function cancelOpenQueueItems(queue: AnalysisQueueItem[]): AnalysisQueueItem[] {
+export function requestQueueCancellation(queue: AnalysisQueueItem[], activeId: string | null): AnalysisQueueItem[] {
   const completedAt = new Date().toISOString();
-  return queue.map((item) => item.status === 'pending' || item.status === 'running'
-    ? { ...item, status: 'cancelled', completedAt }
-    : item);
+  return queue.map((item) => {
+    if (item.status === 'pending') return { ...item, status: 'cancelled', completedAt, error: 'Отменено до запуска.' };
+    if (item.status === 'running' && item.id === activeId) return { ...item, status: 'cancelling' };
+    return item;
+  });
+}
+
+export function confirmQueueCancellation(queue: AnalysisQueueItem[], id: string): AnalysisQueueItem[] {
+  return updateQueueItem(queue, id, {
+    status: 'cancelled',
+    completedAt: new Date().toISOString(),
+    error: 'Отменено пользователем; остановка подтверждена Rust backend.',
+  });
 }
 
 export function removeFinishedQueueItems(queue: AnalysisQueueItem[]): AnalysisQueueItem[] {
-  return queue.filter((item) => item.status === 'pending' || item.status === 'running');
+  return queue.filter((item) => item.status === 'pending' || item.status === 'running' || item.status === 'cancelling');
 }
 
 export function pendingQueueItems(queue: AnalysisQueueItem[]): AnalysisQueueItem[] {
   return queue.filter((item) => item.status === 'pending');
+}
+
+export function isFinishedStatus(status: QueueStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
 
 function queueIdentity(item: AnalysisQueueItem): string {
