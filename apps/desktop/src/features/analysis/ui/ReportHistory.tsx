@@ -1,7 +1,6 @@
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, FileJson2, LoaderCircle, Search, ShieldCheck, Trash2 } from 'lucide-react';
-import { clearReports, deleteReport, loadReportHistory } from '../model/analysis-storage';
+import { clearReportHistory, deleteReportHistory, loadReportHistory } from '../model/analysis-storage';
 import type { HistoryStorageStatus } from '../model/history-repository';
 import { riskLabels, type AnalysisReport, type ObjectKind, type RiskLevel } from '../model/types';
 import { ReportView } from './ReportView';
@@ -22,9 +21,7 @@ export function ReportHistory() {
     let active = true;
     void loadReportHistory().then((snapshot) => {
       if (!active) return;
-      setReports(snapshot.reports);
-      setStorageStatus(snapshot.status);
-      setStorageMessage(snapshot.message ?? '');
+      applySnapshot(snapshot);
       setLoading(false);
     });
     return () => { active = false; };
@@ -33,6 +30,12 @@ export function ReportHistory() {
   useEffect(() => {
     if (clearConfirmationOpen) cancelClearRef.current?.focus();
   }, [clearConfirmationOpen]);
+
+  const applySnapshot = (snapshot: Awaited<ReturnType<typeof loadReportHistory>>) => {
+    setReports(snapshot.reports);
+    setStorageStatus(snapshot.status);
+    setStorageMessage(snapshot.message ?? '');
+  };
 
   const filtered = useMemo(
     () => reports.filter((report) => {
@@ -46,17 +49,18 @@ export function ReportHistory() {
   );
 
   const remove = async (id: string) => {
-    const next = await deleteReport(id);
-    setReports(next);
-    if (selected?.id === id) setSelected(null);
+    const snapshot = await deleteReportHistory(id);
+    applySnapshot(snapshot);
+    if (snapshot.persisted && selected?.id === id) setSelected(null);
   };
 
   const clearHistory = async () => {
-    setReports(await clearReports());
-    setSelected(null);
-    setStorageStatus('empty');
-    setStorageMessage('');
-    setClearConfirmationOpen(false);
+    const snapshot = await clearReportHistory();
+    applySnapshot(snapshot);
+    if (snapshot.persisted) {
+      setSelected(null);
+      setClearConfirmationOpen(false);
+    }
   };
 
   if (selected) {
@@ -99,7 +103,8 @@ export function ReportHistory() {
       onKeyDown={(event) => { if (event.key === 'Escape') setClearConfirmationOpen(false); }}>
       <div className="analysis-history__confirmation-content">
         <strong id="clear-history-title">Очистить всю историю?</strong>
-        <p id="clear-history-description">Все локально сохранённые отчёты будут удалены без возможности восстановления. Резервные копии миграции и настройки анализа останутся нетронутыми.</p>
+        <p id="clear-history-description">Все локально сохранённые отчёты и резервные копии миграции отчётов будут удалены без возможности восстановления. Настройки анализа останутся нетронутыми.</p>
+        {storageStatus === 'unavailable' && storageMessage && <p role="status">{storageMessage}</p>}
       </div>
       <div className="analysis-history__confirmation-actions">
         <button ref={cancelClearRef} type="button" className="button button-secondary" onClick={() => setClearConfirmationOpen(false)}>Отмена</button>
