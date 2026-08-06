@@ -8,6 +8,7 @@ import './shared/styles/motion-tuning.css';
 import './shared/styles/v020.css';
 import './shared/styles/queue.css';
 import './shared/styles/v033-bugfix.css';
+import './shared/styles/select-accessibility.css';
 import './shared/styles/light-theme-contrast.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
