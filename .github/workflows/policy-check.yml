@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Проверить обязательные файлы
         shell: bash
@@ -95,6 +95,22 @@ jobs:
           fi
           if grep -RInE 'actions/(checkout|setup-node|upload-artifact|download-artifact)@v4' .github/workflows; then
             echo '::error::.github/workflows содержит Actions на устаревшем Node 20 runtime.'
+            exit 1
+          fi
+
+      - name: Проверить immutable refs внешних Actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          violations="$(
+            grep -RInE '^[[:space:]]*uses:[[:space:]]+[^[:space:]]+' .github/workflows \
+              | grep -vE 'uses:[[:space:]]+\./' \
+              | grep -vE 'uses:[[:space:]]+[^@[:space:]]+@[0-9a-f]{40}([[:space:]]+#.*)?$' \
+              || true
+          )"
+          if [[ -n "$violations" ]]; then
+            echo '::error::Внешние GitHub Actions должны быть закреплены по полному 40-символьному commit SHA.'
+            echo "$violations"
             exit 1
           fi
 
