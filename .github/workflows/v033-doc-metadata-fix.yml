@@ -1,0 +1,47 @@
+name: Одноразовая коррекция release metadata v0.3.3
+
+on:
+  push:
+    branches: [fix/0.3.3-bugfix]
+    paths:
+      - '.github/workflows/v033-doc-metadata-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/0.3.3-bugfix
+          fetch-depth: 0
+      - name: Исправить статус v0.3.2 и v0.3.3
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
+          old = '> **Текущая разрабатываемая версия:** `v0.3.2`  \n> **Последний опубликованный релиз:** `v0.3.1`  '
+          new = '> **Текущая разрабатываемая версия:** `v0.3.3`  \n> **Последний опубликованный релиз:** `v0.3.2`  '
+          if old not in text:
+              raise SystemExit('README version header not found')
+          readme.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          if '## [0.3.2] — не выпущено' not in text:
+              raise SystemExit('CHANGELOG v0.3.2 status not found')
+          changelog.write_text(text.replace('## [0.3.2] — не выпущено', '## [0.3.2] — 2026-08-06', 1), encoding='utf-8')
+          PY
+      - name: Удалить workflow и зафиксировать документацию
+        run: |
+          rm .github/workflows/v033-doc-metadata-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md CHANGELOG.md
+          git add -u .github/workflows/v033-doc-metadata-fix.yml
+          git commit -m 'docs(release): синхронизировать статусы v0.3.2 и v0.3.3'
+          git push origin HEAD:fix/0.3.3-bugfix
