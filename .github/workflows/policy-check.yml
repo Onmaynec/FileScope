@@ -20,41 +20,26 @@ concurrency:
 jobs:
   governance:
     name: Структура, лицензия и процесс
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Проверить обязательные файлы
         shell: bash
         run: |
           set -euo pipefail
-
           required_files=(
-            README.md
-            LICENSE
-            CONTRIBUTING.md
-            SECURITY.md
-            CODE_OF_CONDUCT.md
-            CHANGELOG.md
-            REPOSITORY_POLICY.md
-            RESPONSIBLE_USE.md
-            SUPPORT.md
-            BRAND_POLICY.md
-            CONTRIBUTOR_LICENSE_AGREEMENT.md
-            .github/CODEOWNERS
-            .github/PULL_REQUEST_TEMPLATE.md
-            .github/dependabot.yml
-            .github/workflows/ci.yml
-            .github/workflows/release.yml
-            docs/governance/README.md
-            docs/governance/RELEASE_POLICY.md
-            docs/governance/AI_CONTRIBUTION_POLICY.md
-            docs/governance/GITHUB_SETTINGS_CHECKLIST.md
+            README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md
+            REPOSITORY_POLICY.md RESPONSIBLE_USE.md SUPPORT.md BRAND_POLICY.md
+            CONTRIBUTOR_LICENSE_AGREEMENT.md .github/CODEOWNERS .github/PULL_REQUEST_TEMPLATE.md
+            .github/dependabot.yml .github/workflows/ci.yml .github/workflows/release.yml
+            .github/workflows/policy-check.yml .github/workflows/security-fuzz.yml
+            docs/governance/README.md docs/governance/RELEASE_POLICY.md
+            docs/governance/AI_CONTRIBUTION_POLICY.md docs/governance/GITHUB_SETTINGS_CHECKLIST.md
             docs/releases/README.md
           )
-
           missing=0
           for path in "${required_files[@]}"; do
             if [[ ! -s "$path" ]]; then
@@ -62,29 +47,24 @@ jobs:
               missing=1
             fi
           done
-
           exit "$missing"
 
       - name: Проверить классификацию и лицензию
         shell: bash
         run: |
           set -euo pipefail
-
           grep -Fq 'Public Source-Available' REPOSITORY_POLICY.md || {
             echo '::error file=REPOSITORY_POLICY.md::Не указана обязательная классификация Public Source-Available.'
             exit 1
           }
-
           grep -Fq 'NOT an open-source license' LICENSE || {
             echo '::error file=LICENSE::Лицензия должна явно указывать, что она не является open-source лицензией.'
             exit 1
           }
-
           grep -Fq 'Veilbyte Restricted Source License 1.0' LICENSE || {
             echo '::error file=LICENSE::Не найдена утверждённая лицензия Veilbyte Restricted Source License 1.0.'
             exit 1
           }
-
           grep -Fq 'Veilbyte' apps/desktop/src-tauri/tauri.conf.json || {
             echo '::error file=apps/desktop/src-tauri/tauri.conf.json::Не указан официальный издатель Veilbyte.'
             exit 1
@@ -94,7 +74,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           if grep -RInE '\[(VEILBYTE_[A-Z_]+|COPYRIGHT_HOLDER|YEAR)\]' \
             README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md \
             REPOSITORY_POLICY.md RESPONSIBLE_USE.md SUPPORT.md BRAND_POLICY.md \
@@ -103,23 +82,35 @@ jobs:
             exit 1
           fi
 
+      - name: Проверить постоянный набор workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed='ci.yml policy-check.yml release.yml security-fuzz.yml'
+          actual="$(find .github/workflows -maxdepth 1 -type f -printf '%f\n' | sort | xargs)"
+          if [[ "$actual" != "$allowed" ]]; then
+            echo "::error::.github/workflows должен содержать только постоянные workflow: $allowed. Найдено: $actual"
+            exit 1
+          fi
+          if grep -RInE 'actions/(checkout|setup-node|upload-artifact|download-artifact)@v4' .github/workflows; then
+            echo '::error::.github/workflows содержит Actions на устаревшем Node 20 runtime.'
+            exit 1
+          fi
+
       - name: Проверить релизную инфраструктуру
         shell: bash
         run: |
           set -euo pipefail
-
-          if compgen -G '.github/workflows/publish-v*.yml' >/dev/null; then
-            echo '::error::.github/workflows содержит устаревший version-specific publish workflow.'
-            exit 1
-          fi
-
           grep -Fq 'environment: production' .github/workflows/release.yml || {
             echo '::error file=.github/workflows/release.yml::Релиз должен использовать Environment production.'
             exit 1
           }
-
           grep -Fq 'permissions:' .github/workflows/ci.yml || {
             echo '::error file=.github/workflows/ci.yml::Основной CI должен явно задавать минимальные permissions.'
+            exit 1
+          }
+          grep -Fq 'contents: read' .github/workflows/security-fuzz.yml || {
+            echo '::error file=.github/workflows/security-fuzz.yml::Fuzz workflow должен быть read-only.'
             exit 1
           }
 
@@ -131,14 +122,12 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-
           if [[ "$BASE_REF" == 'main' ]]; then
             if [[ ! "$HEAD_REF" =~ ^(develop|release/.+|hotfix/.+)$ ]]; then
               echo "::error::В main разрешены PR только из develop, release/* или hotfix/*. Текущая ветка: $HEAD_REF"
               exit 1
             fi
           fi
-
           if [[ "$BASE_REF" == 'develop' ]]; then
             if [[ ! "$HEAD_REF" =~ ^(feature/.+|fix/.+|chore/.+|release/.+|hotfix/.+|dependabot/.+|main)$ ]]; then
               echo "::error::Недопустимое имя ветки для PR в develop: $HEAD_REF"
