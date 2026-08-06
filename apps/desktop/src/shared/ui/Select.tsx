@@ -48,14 +48,12 @@ export function Select<Value extends string>({ label, value, options, onChange, 
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) close(true);
     };
-    const onViewportChange = () => close(false);
+    const onResize = () => close(false);
     document.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('resize', onViewportChange);
-    window.addEventListener('scroll', onViewportChange, true);
+    window.addEventListener('resize', onResize);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('resize', onViewportChange);
-      window.removeEventListener('scroll', onViewportChange, true);
+      window.removeEventListener('resize', onResize);
     };
   }, [close, open]);
 
