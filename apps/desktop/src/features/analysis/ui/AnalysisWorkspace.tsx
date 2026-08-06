@@ -25,6 +25,7 @@ import {
   isFinishedStatus,
   pendingQueueItems,
   removeFinishedQueueItems,
+  requestCurrentCancellation,
   requestQueueCancellation,
   updateQueueItem,
   type AnalysisQueueItem,
@@ -89,6 +90,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   const [mobilePane, setMobilePane] = useState<MobilePane>('queue');
   const dropzoneRef = useRef<HTMLButtonElement>(null);
   const stopRequestedRef = useRef(false);
+  const detailScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMode(initialMode), [initialMode]);
   useEffect(() => {
@@ -111,6 +113,10 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   const activeItem = queue.find((item) => item.id === activeId);
   const selectedItem = queue.find((item) => item.id === selectedId) ?? null;
   const selectedReport = selectedItem?.reportId ? reports[selectedItem.reportId] : undefined;
+
+  useEffect(() => {
+    if (detailScrollRef.current) detailScrollRef.current.scrollTop = 0;
+  }, [selectedId]);
 
   const filteredQueue = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU');
@@ -276,21 +282,26 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
     stopRequestedRef.current = false;
   };
 
-  const cancel = async () => {
-    stopRequestedRef.current = true;
-    setQueue((current) => requestQueueCancellation(current, activeId));
+  const requestBackendCancellation = async (cancelPending: boolean) => {
+    if (cancelPending) stopRequestedRef.current = true;
+    setQueue((current) => cancelPending
+      ? requestQueueCancellation(current, activeId)
+      : activeId ? requestCurrentCancellation(current, activeId) : current);
     setError('');
     if (!activeId) {
-      setRunning(false);
+      if (cancelPending) setRunning(false);
       return;
     }
     const accepted = await cancelAnalysis(activeId);
     if (!accepted) {
       setQueue((current) => updateQueueItem(current, activeId, { status: 'running' }));
       setError('Rust backend не нашёл активное задание для отмены. Дождитесь его завершения или повторите команду.');
-      stopRequestedRef.current = false;
+      if (cancelPending) stopRequestedRef.current = false;
     }
   };
+
+  const cancelCurrent = () => requestBackendCancellation(false);
+  const cancelAll = () => requestBackendCancellation(true);
 
   const removeItem = (id: string) => {
     if (id === activeId) return;
@@ -305,15 +316,11 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   };
 
   const retryItem = (id: string) => {
-    setQueue((current) => updateQueueItem(current, id, {
-      status: 'pending',
-      startedAt: undefined,
-      completedAt: undefined,
-      reportId: undefined,
-      riskLevel: undefined,
-      riskScore: undefined,
-      error: undefined,
-    }));
+    const previous = queue.find((item) => item.id === id);
+    if (!previous) return;
+    const retry = createQueueItem(previous.kind, previous.target, previous.displayName, previous.activeNetwork);
+    setQueue((current) => current.map((item) => item.id === id ? retry : item));
+    setSelectedId(retry.id);
   };
 
   const navigateCompleted = (offset: number) => {
@@ -359,7 +366,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
       </>}
 
       <div className="analysis-controls">
-        {!running ? <button className="button button-primary analysis-start" disabled={!canStart} onClick={() => void start()}><Play />{pendingCount > 0 ? `Запустить очередь (${pendingCount})` : 'Начать анализ'}</button> : <button className="button button-danger" onClick={() => void cancel()}><Square />Остановить очередь</button>}
+        {!running ? <button className="button button-primary analysis-start" disabled={!canStart} onClick={() => void start()}><Play />{pendingCount > 0 ? `Запустить очередь (${pendingCount})` : 'Начать анализ'}</button> : <div className="button-row"><button className="button button-secondary" onClick={() => void cancelCurrent()}><Square />Отменить текущее</button><button className="button button-danger" onClick={() => void cancelAll()}><Square />Остановить всю очередь</button></div>}
         <span className="helper-text">Лимит файла: {Math.round(limits.maximumFileSizeBytes / 1024 / 1024)} МБ · timeout: {Math.round(limits.jobTimeoutMs / 1000)} сек.</span>
       </div>
     </section>
@@ -391,14 +398,15 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
 
         <section className={`card analysis-detail-pane ${mobilePane === 'details' ? 'mobile-active' : ''}`} aria-label="Детали выбранного задания">
           <header className="analysis-detail-toolbar">
-            <div><strong>{selectedItem?.displayName ?? 'Выберите задание'}</strong><span>{selectedItem ? statusLabels[selectedItem.status] : 'Очередь готова к работе'}</span></div>
+            <div><strong>{selectedItem?.displayName ?? 'Выберите задание'}</strong><span>{selectedItem ? `${statusLabels[selectedItem.status]}${selectedItem.riskScore !== undefined ? ` · риск ${selectedItem.riskScore}/100` : ''}` : 'Очередь готова к работе'}</span></div>
             <div className="analysis-detail-navigation">
+              <button className="button button-secondary" disabled={!activeId} onClick={() => { if (activeId) { setSelectedId(activeId); setMobilePane('details'); } }}>К текущему</button>
               <button className="icon-button" aria-label="Предыдущий завершённый отчёт" disabled={!completedItems.length || selectedCompletedIndex <= 0} onClick={() => navigateCompleted(-1)}><ChevronLeft /></button>
               <span>{selectedCompletedIndex >= 0 ? `${selectedCompletedIndex + 1}/${completedItems.length}` : `0/${completedItems.length}`}</span>
               <button className="icon-button" aria-label="Следующий завершённый отчёт" disabled={!completedItems.length || selectedCompletedIndex < 0 || selectedCompletedIndex >= completedItems.length - 1} onClick={() => navigateCompleted(1)}><ChevronRight /></button>
             </div>
           </header>
-          <div className="analysis-detail-scroll">
+          <div className="analysis-detail-scroll" ref={detailScrollRef}>
             {selectedReport ? <ReportView report={selectedReport} compact /> : <QueueItemDetails item={selectedItem} />}
           </div>
         </section>
