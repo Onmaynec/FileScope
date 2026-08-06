@@ -18,6 +18,7 @@
     "dev": "pnpm --filter @filescope/desktop dev",
     "build": "pnpm --filter @filescope/desktop build",
     "doctor": "node scripts/doctor.mjs",
+    "check:version": "node scripts/check-version-consistency.mjs",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test"
