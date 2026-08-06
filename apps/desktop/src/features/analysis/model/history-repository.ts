@@ -139,11 +139,18 @@ export class LegacyLocalStorageReportHistoryRepository implements ReportHistoryR
     const reports = current.reports.filter((report) => report.id !== id);
     const storage = resolveStorage();
     const persisted = storage ? writeEnvelope(storage, reports) : false;
+    if (!persisted) {
+      return {
+        ...current,
+        status: 'unavailable',
+        persisted: false,
+        message: 'Не удалось удалить отчёт из постоянной истории. Локальная запись оставлена без изменений.',
+      };
+    }
     return {
       reports,
-      status: persisted ? (reports.length ? 'ready' : 'empty') : 'unavailable',
-      persisted,
-      message: persisted ? undefined : 'Не удалось обновить историю после удаления отчёта.',
+      status: reports.length ? 'ready' : 'empty',
+      persisted: true,
     };
   }
 
