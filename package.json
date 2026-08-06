@@ -18,6 +18,7 @@
     "dev": "pnpm --filter @filescope/desktop dev",
     "build": "pnpm --filter @filescope/desktop build",
     "doctor": "node scripts/doctor.mjs",
+    "format:rust:check": "cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all --check",
     "check:version": "node scripts/check-version-consistency.mjs",
     "check:bugfix": "pnpm check:version && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "lint": "pnpm -r lint",
