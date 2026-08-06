@@ -170,7 +170,7 @@ pub async fn analyze_url_active(
     };
 
     token.checkpoint()?;
-    let final_url = final_response.url().clone();
+    let final_url = current.clone();
     let status = final_response.status().as_u16();
     let headers = select_headers(final_response.headers());
     details.resolved_addresses = resolved_addresses.clone();
