@@ -104,7 +104,7 @@ describe('versioned history repository', () => {
     expect(snapshot.persisted).toBe(false);
   });
 
-  it('сохраняет уникальные отчёты, удаляет один и полностью очищает report payload', async () => {
+  it('сохраняет уникальные отчёты, удаляет один и полностью очищает только report payload', async () => {
     await saveReport(sampleReport('a'));
     await saveReport(sampleReport('a'));
     await saveReport(sampleReport('b'));
@@ -113,13 +113,21 @@ describe('versioned history repository', () => {
 
     localStorage.setItem('filescope:v0.2.0:reports', '[{"id":"legacy"}]');
     localStorage.setItem(HISTORY_MIGRATION_BACKUP_KEY, '{"reports":"backup"}');
-    for (const key of LEGACY_HISTORY_MIGRATION_BACKUP_KEYS) localStorage.setItem(key, '{"legacy":"backup"}');
+    const legacyBackupKey = LEGACY_HISTORY_MIGRATION_BACKUP_KEYS[0];
+    localStorage.setItem(legacyBackupKey, JSON.stringify({
+      'filescope:v0.2.0:reports': '[{"id":"legacy-backup"}]',
+      'filescope:v0.2.0:limits': '{"jobTimeoutMs":15000}',
+    }));
     localStorage.setItem('filescope:limits:v1', '{"jobTimeoutMs":30000}');
+
     expect(await clearReports()).toEqual([]);
     expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem('filescope:v0.2.0:reports')).toBeNull();
     expect(localStorage.getItem(HISTORY_MIGRATION_BACKUP_KEY)).toBeNull();
-    for (const key of LEGACY_HISTORY_MIGRATION_BACKUP_KEYS) expect(localStorage.getItem(key)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(legacyBackupKey) ?? '{}')).toEqual({
+      'filescope:v0.2.0:limits': '{"jobTimeoutMs":15000}',
+    });
+    expect(localStorage.getItem(legacyBackupKey)).not.toContain('legacy-backup');
     expect(localStorage.getItem('filescope:limits:v1')).toBe('{"jobTimeoutMs":30000}');
   });
 
