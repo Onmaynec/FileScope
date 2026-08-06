@@ -8,13 +8,13 @@ import { AnalysisWorkspace } from '../../features/analysis/ui/AnalysisWorkspace'
 import { ReportHistory } from '../../features/analysis/ui/ReportHistory';
 import { loadAnalysisLimits, loadReports } from '../../features/analysis/model/analysis-storage';
 import type { AnalysisLimits, AnalysisReport, ObjectKind } from '../../features/analysis/model/types';
+import { APP_VERSION } from '../../shared/config/app-version';
 import { useAppPreferences } from '../../shared/hooks/use-app-preferences';
 import { bindNativeNavigation, selectLocalObject, syncCloseBehavior } from '../../shared/native/native-bridge';
+import { Select } from '../../shared/ui/Select';
 import { ToastHost, type ToastMessage } from '../../widgets/notifications/ToastHost';
 
 type Page = 'home' | 'scan' | 'links' | 'files' | 'archives' | 'reports' | 'settings' | 'about';
-
-const APP_VERSION = '0.3.2';
 
 const navigation = [
   ['home', 'Главная', Home],
@@ -24,6 +24,16 @@ const navigation = [
   ['archives', 'Архивы', FolderArchive],
   ['reports', 'Отчёты', BarChart3],
   ['settings', 'Настройки', Settings],
+] as const;
+
+const themeOptions = [
+  { value: 'system', label: 'Системная' },
+  { value: 'dark', label: 'Тёмная' },
+  { value: 'light', label: 'Светлая' },
+] as const;
+const closeOptions = [
+  { value: 'tray', label: 'Сворачивать в трей' },
+  { value: 'quit', label: 'Закрывать полностью' },
 ] as const;
 
 export function V020App() {
@@ -62,10 +72,7 @@ export function V020App() {
     return () => media.removeEventListener('change', listener);
   }, []);
 
-  useEffect(() => {
-    void syncCloseBehavior(preferences.closeBehavior);
-  }, [preferences.closeBehavior]);
-
+  useEffect(() => { void syncCloseBehavior(preferences.closeBehavior); }, [preferences.closeBehavior]);
   useEffect(() => {
     let listeners: (() => void)[] = [];
     void bindNativeNavigation((target) => {
@@ -105,7 +112,7 @@ function PageHeader({ title, text }: { title: string; text: string }) {
 
 function AnalysisPage({ mode, path, limits, onReport }: { mode: ObjectKind; path?: string; limits: AnalysisLimits; onReport: (report: AnalysisReport) => void }) {
   const title = mode === 'url' ? 'Ссылки' : mode === 'archive' ? 'Архивы' : 'Проверка файлов';
-  const text = mode === 'url' ? 'Пассивный разбор выполняется без сети. Активная проверка доступна только после явного согласия.' : mode === 'archive' ? 'ZIP анализируется без извлечения содержимого на диск. RAR и 7Z пока только распознаются.' : 'SHA-256, сигнатура типа и PE-структура проверяются без запуска файла.';
+  const text = mode === 'url' ? 'Пассивный разбор выполняется единым Rust core без сети. Активная проверка доступна только после явного согласия.' : mode === 'archive' ? 'ZIP анализируется без извлечения содержимого на диск. RAR и 7Z пока только распознаются.' : 'SHA-256 и структура относятся к одному открытому файловому объекту; файл не запускается.';
   return <><PageHeader title={title} text={text} /><AnalysisWorkspace initialMode={mode} initialPath={path} limits={limits} onReport={onReport} /></>;
 }
 
@@ -113,17 +120,17 @@ function HomePage({ navigate, chooseFile }: { navigate: (page: Page) => void; ch
   const reportCount = loadReports().length;
   return <>
     <section className="v020-hero"><div><span className="analysis-kicker">FileScope Core v{APP_VERSION}</span><h1>Реальный анализ до запуска</h1><p>Вычисляйте SHA-256, проверяйте типы файлов, PE-структуру, URL и ZIP-архивы локально. Исследуемые объекты не запускаются и не отправляются наружу.</p><div className="button-row"><button className="button button-primary" onClick={() => void chooseFile()}><Upload />Выбрать файл</button><button className="button button-secondary" onClick={() => navigate('links')}><Globe2 />Проверить URL</button></div></div><div className="v020-hero__shield"><ShieldCheck /><span>Local-first</span><strong>0 внешних загрузок файлов</strong></div></section>
-    <section className="quick-grid"><button className="action-card" onClick={() => navigate('files')}><FileSearch /><strong>Файлы</strong><span>SHA-256, сигнатуры, PE, импорты и энтропия.</span></button><button className="action-card" onClick={() => navigate('links')}><Globe2 /><strong>URL</strong><span>Пассивный разбор и ручная активная проверка.</span></button><button className="action-card" onClick={() => navigate('archives')}><Archive /><strong>ZIP-архивы</strong><span>Пути, глубина, степень сжатия и вложенные объекты.</span></button><button className="action-card" onClick={() => navigate('reports')}><BarChart3 /><strong>Отчёты</strong><span>{reportCount ? `Сохранено локально: ${reportCount}` : 'История пока пуста.'}</span></button></section>
-    <section className="info-banner"><ShieldCheck /><div><strong>Объяснимый риск без повторного начисления</strong><span>Одинаковые нормализованные признаки учитываются один раз. Сильные комбинации API по-прежнему сохраняют высокий риск.</span></div></section>
+    <section className="quick-grid"><button className="action-card" onClick={() => navigate('files')}><FileSearch /><strong>Файлы</strong><span>Атомарный SHA-256, сигнатуры, PE и энтропия.</span></button><button className="action-card" onClick={() => navigate('links')}><Globe2 /><strong>URL</strong><span>Канонический Rust-разбор и защищённая ручная сеть.</span></button><button className="action-card" onClick={() => navigate('archives')}><Archive /><strong>ZIP-архивы</strong><span>Пути, глубина, степень сжатия и вложенные объекты.</span></button><button className="action-card" onClick={() => navigate('reports')}><BarChart3 /><strong>Отчёты</strong><span>{reportCount ? `Сохранено локально: ${reportCount}` : 'История пока пуста.'}</span></button></section>
+    <section className="info-banner"><ShieldCheck /><div><strong>BugFix v{APP_VERSION}</strong><span>Backend-cancellation, защита от SSRF/TOCTOU, версия схемы отчётов и удобная очередь для массового анализа.</span></div></section>
   </>;
 }
 
 function SettingsPage({ limits, setLimits, theme, setTheme, closeBehavior, setCloseBehavior }: { limits: AnalysisLimits; setLimits: (limits: AnalysisLimits) => void; theme: 'system' | 'dark' | 'light'; setTheme: (theme: 'system' | 'dark' | 'light') => void; closeBehavior: 'tray' | 'quit'; setCloseBehavior: (value: 'tray' | 'quit') => void }) {
-  return <><PageHeader title="Настройки" text="Настройки интерфейса и защитных ограничений сохраняются локально." /><section className="card settings-v020"><h2>Интерфейс и окно</h2><div className="setting-row"><div><strong>Тема</strong><span>Системная, светлая или тёмная.</span></div><select className="input compact" value={theme} onChange={(event) => setTheme(event.target.value as typeof theme)}><option value="system">Системная</option><option value="dark">Тёмная</option><option value="light">Светлая</option></select></div><div className="setting-row"><div><strong>При закрытии окна</strong><span>Крестик скрывает приложение в трей или полностью завершает процесс.</span></div><select className="input compact" value={closeBehavior} onChange={(event) => setCloseBehavior(event.target.value as typeof closeBehavior)}><option value="tray">Сворачивать в трей</option><option value="quit">Закрывать полностью</option></select></div><div className="setting-row"><div><strong>Версия приложения</strong><span>Точная версия установленной сборки для отчётов и диагностики.</span></div><span className="badge neutral">{APP_VERSION}</span></div></section><AnalysisSettings value={limits} onChange={setLimits} /></>;
+  return <><PageHeader title="Настройки" text="Настройки интерфейса и защитных ограничений сохраняются локально." /><section className="card settings-v020"><h2>Интерфейс и окно</h2><div className="setting-row"><div><strong>Тема</strong><span>Системная, светлая или тёмная.</span></div><Select label="Тема приложения" value={theme} options={themeOptions} onChange={setTheme} /></div><div className="setting-row"><div><strong>При закрытии окна</strong><span>Крестик скрывает приложение в трей или полностью завершает процесс.</span></div><Select label="Поведение при закрытии" value={closeBehavior} options={closeOptions} onChange={setCloseBehavior} /></div><div className="setting-row"><div><strong>Версия приложения</strong><span>Единый build-time источник для интерфейса, отчётов и экспорта.</span></div><span className="badge neutral">{APP_VERSION}</span></div></section><AnalysisSettings value={limits} onChange={setLimits} /></>;
 }
 
 function AboutPage() {
-  return <><PageHeader title="О программе" text="FileScope v0.3.2 — стабильность сборки и качества анализа." /><section className="card about-v020"><span className="about-logo"><ShieldCheck /></span><div><h2>FileScope {APP_VERSION}</h2><p>Desktop-приложение для предварительной локальной проверки файлов, ссылок и ZIP-архивов до запуска.</p></div><dl className="metadata-grid"><div><dt>Режим</dt><dd>Локальный анализ</dd></div><div><dt>Файлы</dt><dd>SHA-256, magic, PE</dd></div><div><dt>URL</dt><dd>Пассивный + ручной активный</dd></div><div><dt>Архивы</dt><dd>ZIP без извлечения</dd></div></dl><div className="status-banner warning"><Info /><span>FileScope показывает ограничения результата отдельно: RAR и 7Z распознаются, но структурно пока не разбираются.</span></div></section></>;
+  return <><PageHeader title="О программе" text={`FileScope v${APP_VERSION} — BugFix безопасности и массового анализа.`} /><section className="card about-v020"><span className="about-logo"><ShieldCheck /></span><div><h2>FileScope {APP_VERSION}</h2><p>Desktop-приложение для предварительной локальной проверки файлов, ссылок и ZIP-архивов до запуска.</p></div><dl className="metadata-grid"><div><dt>Режим</dt><dd>Локальный анализ</dd></div><div><dt>Файлы</dt><dd>Один handle, SHA-256, magic, PE</dd></div><div><dt>URL</dt><dd>Rust core + SSRF-защита</dd></div><div><dt>Задания</dt><dd>Backend cancellation</dd></div></dl><div className="status-banner warning"><Info /><span>FileScope показывает ограничения результата отдельно: RAR и 7Z распознаются, но структурно пока не разбираются.</span></div></section></>;
 }
 
 function isPage(value: string): value is Page {
