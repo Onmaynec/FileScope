@@ -6,50 +6,44 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('открывается функциональный главный экран v0.3.2', async ({ page }) => {
+test('открывается функциональный главный экран v0.3.3', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Реальный анализ до запуска' })).toBeVisible();
   await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
-  await expect(page.getByText('Версия 0.3.2')).toBeVisible();
+  await expect(page.getByText('Версия 0.3.3')).toBeVisible();
 });
 
-test('настройка закрытия окна по умолчанию использует системный трей', async ({ page }) => {
+test('кнопка загрузки файлов использует понятный текст', async ({ page }) => {
+  await page.getByRole('button', { name: /Файлы/ }).click();
+  await expect(page.getByText('Загрузить файлы', { exact: true })).toBeVisible();
+  await expect(page.getByText('Открыть файловый диалог', { exact: true })).toHaveCount(0);
+});
+
+test('кастомный select доступен с клавиатуры и сохраняет настройку', async ({ page }) => {
   await page.getByRole('button', { name: /Настройки/ }).click();
-  const closeBehavior = page.locator('.settings-v020 select').nth(1);
+  const closeBehavior = page.getByRole('button', { name: 'Поведение при закрытии' });
 
   await expect(page.getByText('Версия приложения')).toBeVisible();
-  await expect(page.getByText('0.3.2', { exact: true })).toBeVisible();
-  await expect(closeBehavior).toHaveValue('tray');
-  await closeBehavior.selectOption('quit');
+  await expect(page.getByText('0.3.3', { exact: true })).toBeVisible();
+  await expect(closeBehavior).toContainText('Сворачивать в трей');
+  await closeBehavior.focus();
+  await closeBehavior.press('Enter');
+  await page.getByRole('option', { name: 'Закрывать полностью' }).press('Enter');
   await page.reload();
   await page.getByRole('button', { name: /Настройки/ }).click();
 
-  await expect(page.locator('.settings-v020 select').nth(1)).toHaveValue('quit');
+  await expect(page.getByRole('button', { name: 'Поведение при закрытии' })).toContainText('Закрывать полностью');
 });
 
-test('пассивный URL-анализ создаёт реальный локальный отчёт', async ({ page }) => {
+test('browser preview не выдаёт ложный production verdict', async ({ page }) => {
   await page.getByRole('button', { name: /Ссылки/ }).click();
-  const input = page.getByLabel('Адрес');
-  await input.fill('https://login@example.com/open?redirect=https%3A%2F%2Fevil.test');
+  await page.getByLabel('Адрес').fill('https://login@example.com/open?redirect=https%3A%2F%2Fevil.test');
   await page.getByRole('button', { name: 'Начать анализ' }).click();
 
-  await expect(page.getByText('Реальный локальный отчёт')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Высокий риск' })).toBeVisible();
-  await expect(page.getByText('В URL встроены учётные данные')).toBeVisible();
-  await expect(page.getByText('В параметрах найден вложенный адрес')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Кратко' })).toBeVisible();
+  await expect(page.getByText(/Browser preview не выдаёт production verdict/)).toBeVisible();
+  await expect(page.getByText('Реальный локальный отчёт')).toHaveCount(0);
 });
 
-test('отчёт сохраняется в локальной истории', async ({ page }) => {
-  await page.getByRole('button', { name: /Ссылки/ }).click();
-  await page.getByLabel('Адрес').fill('https://example.com/path');
-  await page.getByRole('button', { name: 'Начать анализ' }).click();
-  await expect(page.getByText('Реальный локальный отчёт')).toBeVisible();
-
-  await page.getByRole('button', { name: /Отчёты/ }).click();
-  await expect(page.getByRole('button', { name: /example.com/ })).toBeVisible();
-});
-
-test('два URL последовательно обрабатываются через очередь', async ({ page }) => {
+test('несколько URL образуют master-detail очередь', async ({ page }) => {
   await page.getByRole('button', { name: /Ссылки/ }).click();
   const input = page.getByLabel('Адрес');
 
@@ -58,18 +52,29 @@ test('два URL последовательно обрабатываются ч�
   await input.fill('https://example.org/second');
   await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
 
-  await expect(page.getByRole('heading', { name: /Очередь проверок/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Запустить очередь (2)' }).click();
-  await expect(page.getByText('2/2')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Очередь' })).toBeVisible();
+  await expect(page.getByLabel('Очередь проверок')).toContainText('example.com');
+  await expect(page.getByLabel('Очередь проверок')).toContainText('example.org');
+  await expect(page.getByLabel('Детали выбранного задания')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Запустить очередь (2)' })).toBeVisible();
+});
 
-  await page.getByRole('button', { name: /Отчёты/ }).click();
-  await expect(page.getByRole('button', { name: /example.com/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /example.org/ })).toBeVisible();
+test('фильтры очереди используют доступные listbox', async ({ page }) => {
+  await page.getByRole('button', { name: /Ссылки/ }).click();
+  await page.getByLabel('Адрес').fill('https://example.com/first');
+  await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
+
+  const status = page.getByRole('button', { name: 'Фильтр статуса' });
+  await status.click();
+  await expect(page.getByRole('listbox', { name: 'Фильтр статуса' })).toBeVisible();
+  await page.getByRole('option', { name: 'Ожидают' }).click();
+  await expect(status).toContainText('Ожидают');
 });
 
 test('синий текст светлой темы остаётся читаемым на светлых поверхностях', async ({ page }) => {
   await page.getByRole('button', { name: /Настройки/ }).click();
-  await page.locator('.settings-v020 select').first().selectOption('light');
+  await page.getByRole('button', { name: 'Тема приложения' }).click();
+  await page.getByRole('option', { name: 'Светлая' }).click();
   await page.getByRole('button', { name: /Главная/ }).click();
 
   const checkedText = [
