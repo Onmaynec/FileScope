@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendUniqueQueueItems,
-  cancelOpenQueueItems,
+  confirmQueueCancellation,
   createQueueItem,
   pendingQueueItems,
+  requestQueueCancellation,
   updateQueueItem,
 } from './scan-queue';
 
@@ -21,12 +22,15 @@ describe('очередь анализа', () => {
     expect(completed[0].status).toBe('completed');
   });
 
-  it('отменяет активные и ожидающие задания, сохраняя завершённые', () => {
+  it('не называет running-задание отменённым до ответа backend', () => {
     const running = { ...createQueueItem('file', 'a.exe', 'a.exe'), status: 'running' as const };
     const pending = createQueueItem('file', 'b.exe', 'b.exe');
     const completed = { ...createQueueItem('file', 'c.exe', 'c.exe'), status: 'completed' as const };
-    const result = cancelOpenQueueItems([running, pending, completed]);
-    expect(result.map((item) => item.status)).toEqual(['cancelled', 'cancelled', 'completed']);
-    expect(pendingQueueItems(result)).toHaveLength(0);
+    const requested = requestQueueCancellation([running, pending, completed], running.id);
+    expect(requested.map((item) => item.status)).toEqual(['cancelling', 'cancelled', 'completed']);
+    expect(pendingQueueItems(requested)).toHaveLength(0);
+    const confirmed = confirmQueueCancellation(requested, running.id);
+    expect(confirmed[0].status).toBe('cancelled');
+    expect(confirmed[0].error).toContain('Rust backend');
   });
 });
