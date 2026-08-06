@@ -193,10 +193,7 @@ impl JobRegistry {
 
     #[cfg(test)]
     pub fn active_count(&self) -> usize {
-        self.jobs
-            .lock()
-            .map(|jobs| jobs.len())
-            .unwrap_or_default()
+        self.jobs.lock().map(|jobs| jobs.len()).unwrap_or_default()
     }
 }
 
