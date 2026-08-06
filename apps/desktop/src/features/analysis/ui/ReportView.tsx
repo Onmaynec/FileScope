@@ -17,14 +17,14 @@ export function ReportView({ report, compact = false }: ReportViewProps) {
       <header className="analysis-report__header">
         <span className="analysis-report__risk-icon"><RiskIcon /></span>
         <div>
-          <span className="analysis-kicker">Реальный локальный отчёт</span>
+          <span className="analysis-kicker">FileScope {report.appVersion} · schema {report.schemaVersion}</span>
           <h2>{riskLabels[report.riskLevel]}</h2>
           <p>{report.displayName} · оценка {report.riskScore}/100 · {report.durationMs} мс</p>
         </div>
         <div className="analysis-report__actions">
           <button className="button button-secondary" onClick={() => void copySummary()}><Copy />Кратко</button>
-          <button className="button button-secondary" onClick={() => downloadReport(report, 'json')}><Download />JSON</button>
-          <button className="button button-secondary" onClick={() => downloadReport(report, 'html')}><Download />HTML</button>
+          <button className="button button-secondary" onClick={() => void downloadReport(report, 'json')}><Download />JSON</button>
+          <button className="button button-secondary" onClick={() => void downloadReport(report, 'html')}><Download />HTML</button>
         </div>
       </header>
 
@@ -32,12 +32,16 @@ export function ReportView({ report, compact = false }: ReportViewProps) {
         <div><dt>Тип объекта</dt><dd>{objectKindLabel(report.objectKind)}</dd></div>
         <div><dt>Фактический формат</dt><dd>{report.detectedType ?? 'Не определён'}</dd></div>
         <div><dt>Размер</dt><dd>{report.sizeBytes === undefined ? '—' : formatBytes(report.sizeBytes)}</dd></div>
+        <div><dt>Полнота</dt><dd>{completenessLabel(report.analysisCompleteness)}</dd></div>
+        <div><dt>Analyzer</dt><dd>{report.analyzerVersion}</dd></div>
+        <div><dt>Rule set</dt><dd>{report.ruleSetVersion}</dd></div>
+        <div><dt>Среда</dt><dd>{report.createdBy.platform} · {report.createdBy.architecture}</dd></div>
         <div><dt>Завершено</dt><dd>{new Date(report.completedAt).toLocaleString('ru-RU')}</dd></div>
       </dl>
 
       {partialReason && <div className="status-banner warning" role="status"><AlertTriangle /><div><strong>Анализ выполнен частично</strong><span>{partialReason}</span></div></div>}
 
-      {report.sha256 && <div className="analysis-hash"><span><strong>SHA-256</strong><code>{report.sha256}</code></span><button className="icon-button" title="Копировать SHA-256" onClick={() => void navigator.clipboard?.writeText(report.sha256 ?? '')}><Copy /></button></div>}
+      {report.sha256 && <div className="analysis-hash"><span><strong>SHA-256 объекта</strong><code>{report.sha256}</code></span><button className="icon-button" title="Копировать SHA-256" onClick={() => void navigator.clipboard?.writeText(report.sha256 ?? '')}><Copy /></button></div>}
 
       <section className="analysis-section">
         <div className="card-title-row"><div><h3>Обнаруженные признаки</h3><p>{report.indicators.length ? `Найдено: ${report.indicators.length}` : 'Признаки, повышающие риск, не обнаружены.'}</p></div></div>
@@ -53,7 +57,7 @@ export function ReportView({ report, compact = false }: ReportViewProps) {
         </div>
       </section>
 
-      {report.url && <section className="analysis-section"><h3><Globe2 />URL</h3><dl className="metadata-grid"><div><dt>Нормализованный адрес</dt><dd>{report.url.normalizedUrl}</dd></div><div><dt>Домен</dt><dd>{report.url.host}</dd></div><div><dt>Схема и порт</dt><dd>{report.url.scheme.toUpperCase()} · {report.url.port ?? 'по умолчанию'}</dd></div><div><dt>Сетевой запрос</dt><dd>{report.url.activeCheckPerformed ? 'Выполнен вручную' : 'Не выполнялся'}</dd></div>{report.url.finalUrl && <div><dt>Итоговый URL</dt><dd>{report.url.finalUrl}</dd></div>}{report.url.statusCode && <div><dt>HTTP-статус</dt><dd>{report.url.statusCode}</dd></div>}{report.url.resolvedAddresses.length > 0 && <div><dt>IP-адреса</dt><dd>{report.url.resolvedAddresses.join(', ')}</dd></div>}</dl></section>}
+      {report.url && <section className="analysis-section"><h3><Globe2 />URL</h3><dl className="metadata-grid"><div><dt>Нормализованный адрес</dt><dd>{report.url.normalizedUrl}</dd></div><div><dt>ASCII-домен</dt><dd>{report.url.asciiHost}</dd></div><div><dt>Unicode-домен</dt><dd>{report.url.unicodeHost}</dd></div><div><dt>Registrable domain</dt><dd>{report.url.registrableDomain ?? 'Не определён'}</dd></div><div><dt>Схема и порт</dt><dd>{report.url.scheme.toUpperCase()} · {report.url.port ?? 'по умолчанию'}</dd></div><div><dt>Сетевой запрос</dt><dd>{report.url.activeCheckPerformed ? 'Выполнен вручную с SSRF-защитой' : 'Не выполнялся'}</dd></div>{report.url.finalUrl && <div><dt>Итоговый URL</dt><dd>{report.url.finalUrl}</dd></div>}{report.url.statusCode !== undefined && <div><dt>HTTP-статус</dt><dd>{report.url.statusCode}</dd></div>}{report.url.resolvedAddresses.length > 0 && <div><dt>Разрешённые IP</dt><dd>{report.url.resolvedAddresses.join(', ')}</dd></div>}</dl></section>}
 
       {report.pe && <section className="analysis-section"><h3><FileCode2 />Windows PE</h3><dl className="metadata-grid"><div><dt>Архитектура</dt><dd>{report.pe.architecture}</dd></div><div><dt>Точка входа</dt><dd>0x{report.pe.entryPoint.toString(16)}</dd></div><div><dt>Authenticode</dt><dd>{report.pe.signaturePresent ? 'Таблица сертификатов присутствует; доверие издателя не проверялось' : 'Таблица сертификатов не обнаружена'}</dd></div><div><dt>Импорты</dt><dd>{report.pe.imports.length}</dd></div></dl><div className="analysis-table"><div className="analysis-table__head"><span>Секция</span><span>Virtual</span><span>Raw</span><span>Энтропия</span></div>{report.pe.sections.map((section) => <div className="analysis-table__row" key={section.name}><span>{section.name}</span><span>{formatBytes(section.virtualSize)}</span><span>{formatBytes(section.rawSize)}</span><span>{section.entropy.toFixed(2)}</span></div>)}</div></section>}
 
@@ -66,32 +70,35 @@ export function ReportView({ report, compact = false }: ReportViewProps) {
 
 function buildShortSummary(report: AnalysisReport): string {
   const lines = [
-    `FileScope 0.3.2: ${riskLabels[report.riskLevel]}`,
+    `FileScope ${report.appVersion}: ${riskLabels[report.riskLevel]}`,
+    `Schema: ${report.schemaVersion}; Analyzer: ${report.analyzerVersion}; Rules: ${report.ruleSetVersion}`,
     `Объект: ${report.displayName}`,
     `Оценка: ${report.riskScore}/100`,
     `Формат: ${report.detectedType ?? 'не определён'}`,
+    `Полнота: ${completenessLabel(report.analysisCompleteness)}`,
   ];
   if (report.sha256) lines.push(`SHA-256: ${report.sha256}`);
   lines.push(`Признаков: ${report.indicators.length}`);
   const partialReason = getPartialReason(report);
-  if (partialReason) lines.push(`Статус: анализ выполнен частично — ${partialReason}`);
+  if (partialReason) lines.push(`Ограничение: ${partialReason}`);
   return lines.join('\n');
 }
 
 function getPartialReason(report: AnalysisReport): string {
-  if (report.metadata.analysisStopped) {
-    return 'Проверка остановлена защитным лимитом; содержимое объекта разобрано не полностью.';
-  }
-  if (report.detectedType === 'RAR archive') {
-    return 'RAR распознан по сигнатуре, но содержимое архива в этой версии структурно не разбирается.';
-  }
-  if (report.detectedType === '7-Zip archive') {
-    return '7Z распознан по сигнатуре, но содержимое архива в этой версии структурно не разбирается.';
-  }
-  if (report.indicators.some((indicator) => indicator.id === 'pe.parse.failed')) {
-    return 'Файл имеет сигнатуру Windows PE, но структура повреждена или нестандартна и разобрана не полностью.';
-  }
-  return '';
+  if (report.analysisCompleteness === 'complete') return '';
+  if (report.analysisCompleteness === 'stoppedByLimit') return 'Проверка остановлена защитным лимитом; объект разобран не полностью.';
+  if (report.detectedType === 'RAR archive') return 'RAR распознан по сигнатуре, но содержимое архива структурно не разбирается.';
+  if (report.detectedType === '7-Zip archive') return '7Z распознан по сигнатуре, но содержимое архива структурно не разбирается.';
+  if (report.indicators.some((indicator) => indicator.id === 'pe.parse.failed')) return 'PE-структура повреждена или нестандартна и разобрана не полностью.';
+  if (report.analysisCompleteness === 'failed') return 'Отчёт открыт в безопасном режиме совместимости и не является новым verdict.';
+  return 'Часть анализаторов или данных была недоступна; учитывайте ограничения отчёта.';
+}
+
+function completenessLabel(value: AnalysisReport['analysisCompleteness']): string {
+  if (value === 'complete') return 'Полный';
+  if (value === 'partial') return 'Частичный';
+  if (value === 'stoppedByLimit') return 'Остановлен лимитом';
+  return 'Ошибка/совместимость';
 }
 
 function objectKindLabel(kind: AnalysisReport['objectKind']): string {

@@ -1,0 +1,2 @@
+export const APP_VERSION = __FILESCOPE_APP_VERSION__;
+export const REPORT_SCHEMA_VERSION = 1;

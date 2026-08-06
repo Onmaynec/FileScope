@@ -1,5 +1,27 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AnalysisLimits, AnalysisReport, RiskLevel, ThreatIndicator } from '../model/types';
+import type {
+  AnalysisCommandError,
+  AnalysisFailureCode,
+  AnalysisLimits,
+  AnalysisReport,
+} from '../model/types';
+
+export interface AnalysisMetadata {
+  schemaVersion: number;
+  appVersion: string;
+  analyzerVersion: string;
+  ruleSetVersion: string;
+}
+
+export class AnalysisError extends Error {
+  readonly code: AnalysisFailureCode;
+
+  constructor(code: AnalysisFailureCode, message: string) {
+    super(message);
+    this.name = 'AnalysisError';
+    this.code = code;
+  }
+}
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -9,110 +31,83 @@ async function invokeAnalysis(command: string, arguments_: Record<string, unknow
   try {
     return await invoke<AnalysisReport>(command, arguments_);
   } catch (reason) {
-    throw new Error(friendlyAnalysisError(reason));
+    throw normalizeAnalysisError(reason);
   }
 }
 
-export async function analyzeFile(path: string, limits: AnalysisLimits): Promise<AnalysisReport> {
-  if (!isTauriRuntime()) throw new Error('Локальный анализ файлов доступен только в desktop-сборке FileScope.');
-  return invokeAnalysis('analyze_local_file', { path, limits });
+export async function analyzeFile(
+  jobId: string,
+  path: string,
+  limits: AnalysisLimits,
+): Promise<AnalysisReport> {
+  requireDesktop('Локальный анализ файлов');
+  return invokeAnalysis('analyze_local_file', { jobId, path, limits });
 }
 
-export async function analyzeArchive(path: string, limits: AnalysisLimits): Promise<AnalysisReport> {
-  if (!isTauriRuntime()) throw new Error('Анализ ZIP-архивов доступен только в desktop-сборке FileScope.');
-  return invokeAnalysis('analyze_local_archive', { path, limits });
+export async function analyzeArchive(
+  jobId: string,
+  path: string,
+  limits: AnalysisLimits,
+): Promise<AnalysisReport> {
+  requireDesktop('Анализ ZIP-архивов');
+  return invokeAnalysis('analyze_local_archive', { jobId, path, limits });
 }
 
-export async function analyzeUrlPassive(url: string): Promise<AnalysisReport> {
-  if (isTauriRuntime()) return invokeAnalysis('analyze_url_passive', { url });
-  return analyzeUrlInBrowser(url);
+export async function analyzeUrlPassive(jobId: string, url: string): Promise<AnalysisReport> {
+  requireDesktop('Канонический пассивный URL-анализ');
+  return invokeAnalysis('analyze_url_passive', { jobId, url });
 }
 
-export async function analyzeUrlActive(url: string, limits: AnalysisLimits): Promise<AnalysisReport> {
-  if (!isTauriRuntime()) throw new Error('Активная URL-проверка доступна только в desktop-сборке FileScope.');
-  return invokeAnalysis('analyze_url_active', { url, limits });
+export async function analyzeUrlActive(
+  jobId: string,
+  url: string,
+  limits: AnalysisLimits,
+): Promise<AnalysisReport> {
+  requireDesktop('Активная URL-проверка');
+  return invokeAnalysis('analyze_url_active', { jobId, url, limits });
 }
 
-export function analyzeUrlInBrowser(input: string): AnalysisReport {
-  const started = performanceNow();
-  const parsed = new URL(input.trim());
-  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Поддерживаются только HTTP- и HTTPS-ссылки.');
+export async function cancelAnalysis(jobId: string): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  return invoke<boolean>('cancel_analysis', { jobId });
+}
 
-  const indicators: ThreatIndicator[] = [];
-  const host = parsed.hostname.toLowerCase();
-  const labels = host.split('.').filter(Boolean);
-  const containsUnicode = Array.from(input).some((character) => (character.codePointAt(0) ?? 0) > 127);
-  const add = (indicator: ThreatIndicator) => indicators.push(indicator);
-  const make = (
-    id: string,
-    title: string,
-    description: string,
-    severity: ThreatIndicator['severity'],
-    score: number,
-    evidence: string[],
-    recommendation: string,
-  ): ThreatIndicator => ({ id, title, description, severity, score, evidence, recommendation, category: 'url' });
-
-  if (input.length > 220) add(make('url.length.excessive', 'Необычно длинный URL', 'Длинный адрес затрудняет визуальную проверку.', 'medium', 16, [`Длина: ${input.length}`], 'Проверьте домен и параметры отдельно.'));
-  if (host.includes('xn--') || containsUnicode) add(make('url.host.idn', 'Домен содержит IDN/Punycode', 'Символы домена могут визуально имитировать другой адрес.', 'medium', 22, [host], 'Сравните адрес с официальным доменом посимвольно.'));
-  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(':')) add(make('url.host.ip-address', 'Вместо домена используется IP-адрес', 'Прямой адрес затрудняет проверку владельца ресурса.', 'medium', 18, [host], 'Не вводите учётные данные без подтверждения адреса.'));
-  if (parsed.username || parsed.password) add(make('url.credentials.embedded', 'В URL встроены учётные данные', 'Часть до символа @ может скрывать настоящий домен.', 'high', 40, [parsed.href], 'Не открывайте адрес и удалите встроенные учётные данные.'));
-  if (labels.length > 5) add(make('url.host.many-subdomains', 'Необычно много поддоменов', 'Длинная цепочка поддоменов может маскировать основной домен.', 'medium', 16, [host], 'Проверяйте домен справа налево.'));
-  const redirectKeys = ['url', 'uri', 'redirect', 'redirect_url', 'target', 'next', 'continue', 'dest', 'destination'];
-  const redirectParameters = [...parsed.searchParams.entries()]
-    .filter(([key, value]) => redirectKeys.includes(key.toLowerCase()) || /^https?:\/\//i.test(value))
-    .map(([key, value]) => `${key}=${value}`);
-  if (redirectParameters.length) add(make('url.query.redirect-target', 'В параметрах найден вложенный адрес', 'Ссылка может перенаправить пользователя на другой ресурс.', 'medium', 20, redirectParameters, 'Проверьте вложенный адрес отдельно.'));
-  if (/\.(exe|scr|msi|bat|cmd|ps1|js|vbs|hta|lnk)$/i.test(parsed.pathname)) add(make('url.path.executable-download', 'Ссылка похожа на загрузку исполняемого файла', 'Путь заканчивается расширением, способным запускать код в Windows.', 'high', 32, [parsed.pathname], 'После загрузки обязательно проверьте сам файл.'));
-
-  const score = Math.min(100, indicators.reduce((sum, item) => sum + item.score, 0));
-  const riskLevel: RiskLevel = indicators.some((item) => item.severity === 'critical') || score >= 80
-    ? 'dangerous'
-    : indicators.some((item) => item.severity === 'high') || score >= 45
-      ? 'highRisk'
-      : score >= 15
-        ? 'caution'
-        : 'noThreatsFound';
-  const now = new Date().toISOString();
-
-  return {
-    id: cryptoId(),
-    objectKind: 'url',
-    target: input,
-    displayName: host,
-    startedAt: now,
-    completedAt: now,
-    durationMs: Math.max(0, performanceNow() - started),
-    detectedType: 'HTTP URL',
-    riskLevel,
-    riskScore: score,
-    indicators,
-    metadata: { networkAccess: false, browserFallback: true, containsUnicode },
-    url: {
-      normalizedUrl: parsed.href,
-      scheme: parsed.protocol.replace(':', ''),
-      host,
-      port: parsed.port ? Number(parsed.port) : parsed.protocol === 'https:' ? 443 : 80,
-      path: parsed.pathname,
-      queryParameters: [...parsed.searchParams].length,
-      containsPunycode: host.includes('xn--'),
-      hostIsIp: /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host),
-      hasCredentials: Boolean(parsed.username || parsed.password),
-      subdomainCount: Math.max(0, labels.length - 2),
-      redirectParameters,
-      resolvedAddresses: [],
-      responseHeaders: [],
-      activeCheckPerformed: false,
-    },
-    isDemo: false,
-    limitations: ['Пассивный анализ не выполняет сетевой запрос и не проверяет содержимое страницы.'],
-  };
+export async function getAnalysisMetadata(): Promise<AnalysisMetadata> {
+  requireDesktop('Метаданные анализатора');
+  return invoke<AnalysisMetadata>('get_analysis_metadata');
 }
 
 export function friendlyAnalysisError(reason: unknown): string {
-  const raw = reason instanceof Error ? reason.message : String(reason);
-  const value = raw.toLowerCase();
+  const normalized = normalizeAnalysisError(reason);
+  switch (normalized.code) {
+    case 'cancelled':
+      return 'Анализ отменён пользователем. Rust backend подтвердил остановку задания.';
+    case 'timeout':
+      return 'Анализ остановлен по максимальному времени выполнения. Частичный результат не сохранён как завершённый отчёт.';
+    case 'readLimit':
+      return 'Чтение остановлено защитным бюджетом. Увеличивайте лимит только для доверенного объекта.';
+    case 'memoryLimit':
+      return 'Разбор остановлен защитным бюджетом памяти. Объект не запускался и не извлекался.';
+    case 'entryLimit':
+      return 'Обход архива остановлен по максимальному количеству записей.';
+    case 'fileChanged':
+      return 'Файл изменился во время проверки. SHA-256 и структура могли относиться к разным состояниям, поэтому результат не сформирован.';
+    case 'unsupportedObject':
+      return normalized.message || 'Каталоги, ссылки, reparse points и специальные объекты не поддерживаются.';
+    case 'securityBlocked':
+      return normalized.message || 'Операция заблокирована защитной политикой FileScope.';
+    case 'invalidInput':
+      return normalized.message || 'Переданы некорректные данные для анализа.';
+    case 'network':
+      return normalized.message || 'Активная URL-проверка завершилась сетевой ошибкой.';
+    case 'parse':
+      return normalized.message || 'Структура объекта повреждена или не поддерживается.';
+    default:
+      break;
+  }
 
+  const raw = normalized.message;
+  const value = raw.toLowerCase();
   if (value.includes('access is denied') || value.includes('permission denied') || value.includes('os error 5')) {
     return 'Windows запретила чтение объекта. Проверьте права доступа, закройте программу, которая удерживает файл, и повторите анализ.';
   }
@@ -122,24 +117,62 @@ export function friendlyAnalysisError(reason: unknown): string {
   if (value.includes('too large') || value.includes('слишком велик') || value.includes('превышает установленный лимит')) {
     return 'Объект превышает защитный лимит FileScope. Увеличивайте лимит только для доверенного файла либо используйте отдельную изолированную среду.';
   }
-  if (value.includes('invalid zip') || value.includes('архив') && value.includes('повреж')) {
+  if ((value.includes('invalid zip') || value.includes('архив')) && value.includes('повреж')) {
     return 'ZIP-структура повреждена или имеет неподдерживаемый формат. FileScope не извлекал содержимое и остановил структурный разбор.';
   }
   if (value.includes('timed out') || value.includes('timeout') || value.includes('истекло время')) {
-    return 'Активная URL-проверка не завершилась за установленное время. Пассивный результат остаётся доступным без повторного сетевого запроса.';
+    return 'Активная URL-проверка не завершилась за установленное время. Пассивный результат можно запустить отдельно без сетевого обращения.';
   }
   if (value.includes('dns') || value.includes('resolve')) {
-    return 'Не удалось определить IP-адрес домена. Проверьте адрес и сетевое подключение либо используйте только пассивный анализ.';
+    return 'Не удалось определить разрешённый публичный IP-адрес домена. Проверьте адрес и сетевое подключение либо используйте только пассивный анализ.';
   }
-
-  return raw || 'Анализ завершился неизвестной ошибкой. Повторите проверку и сохраните точный путь и тип объекта для отчёта.';
+  return raw || 'Анализ завершился неизвестной ошибкой. Повторите проверку и сохраните точный тип объекта для отчёта.';
 }
 
-function cryptoId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
-  return `report-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+export function normalizeAnalysisError(reason: unknown): AnalysisError {
+  if (reason instanceof AnalysisError) return reason;
+  const structured = parseStructuredError(reason);
+  if (structured) return new AnalysisError(structured.code, structured.message);
+  return new AnalysisError('internal', reason instanceof Error ? reason.message : String(reason ?? ''));
 }
 
-function performanceNow(): number {
-  return typeof performance === 'undefined' ? Date.now() : performance.now();
+function parseStructuredError(reason: unknown): AnalysisCommandError | null {
+  if (isCommandError(reason)) return reason;
+  if (reason instanceof Error) {
+    const parsed = parseJson(reason.message);
+    if (isCommandError(parsed)) return parsed;
+  }
+  if (typeof reason === 'string') {
+    const parsed = parseJson(reason);
+    if (isCommandError(parsed)) return parsed;
+  }
+  return null;
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function isCommandError(value: unknown): value is AnalysisCommandError {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && 'code' in value
+    && 'message' in value
+    && typeof (value as { code?: unknown }).code === 'string'
+    && typeof (value as { message?: unknown }).message === 'string',
+  );
+}
+
+function requireDesktop(feature: string): void {
+  if (!isTauriRuntime()) {
+    throw new AnalysisError(
+      'unsupportedObject',
+      `${feature} доступен только в desktop-сборке FileScope. Browser preview не выдаёт production verdict.`,
+    );
+  }
 }

@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const REPORT_SCHEMA_VERSION: u16 = 1;
+pub const ANALYZER_VERSION: &str = "1.1";
+pub const RULE_SET_VERSION: &str = "2026.08.06.1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectKind {
@@ -26,6 +30,33 @@ pub enum IndicatorSeverity {
     Medium,
     High,
     Critical,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AnalysisCompleteness {
+    Complete,
+    Partial,
+    StoppedByLimit,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedBy {
+    pub platform: String,
+    pub architecture: String,
+    pub runtime: String,
+}
+
+impl Default for CreatedBy {
+    fn default() -> Self {
+        Self {
+            platform: std::env::consts::OS.to_string(),
+            architecture: std::env::consts::ARCH.to_string(),
+            runtime: "tauri-desktop".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +98,9 @@ pub struct UrlAnalysis {
     pub normalized_url: String,
     pub scheme: String,
     pub host: String,
+    pub ascii_host: String,
+    pub unicode_host: String,
+    pub registrable_domain: Option<String>,
     pub port: Option<u16>,
     pub path: String,
     pub query_parameters: usize,
@@ -114,6 +148,12 @@ pub struct ArchiveAnalysis {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisReport {
+    pub schema_version: u16,
+    pub app_version: String,
+    pub analyzer_version: String,
+    pub rule_set_version: String,
+    pub created_by: CreatedBy,
+    pub analysis_completeness: AnalysisCompleteness,
     pub id: String,
     pub object_kind: ObjectKind,
     pub target: String,
@@ -139,6 +179,9 @@ pub struct AnalysisReport {
 #[serde(rename_all = "camelCase", default)]
 pub struct AnalysisLimits {
     pub maximum_file_size_bytes: u64,
+    pub maximum_read_bytes: u64,
+    pub maximum_parser_memory_bytes: u64,
+    pub job_timeout_ms: u64,
     pub maximum_archive_entries: usize,
     pub maximum_archive_uncompressed_bytes: u64,
     pub maximum_archive_depth: usize,
@@ -151,6 +194,9 @@ impl Default for AnalysisLimits {
     fn default() -> Self {
         Self {
             maximum_file_size_bytes: 512 * 1024 * 1024,
+            maximum_read_bytes: 512 * 1024 * 1024,
+            maximum_parser_memory_bytes: 128 * 1024 * 1024,
+            job_timeout_ms: 120_000,
             maximum_archive_entries: 10_000,
             maximum_archive_uncompressed_bytes: 2 * 1024 * 1024 * 1024,
             maximum_archive_depth: 12,
@@ -159,4 +205,12 @@ impl Default for AnalysisLimits {
             active_url_redirect_limit: 5,
         }
     }
+}
+
+pub fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+pub fn report_created_by() -> CreatedBy {
+    CreatedBy::default()
 }

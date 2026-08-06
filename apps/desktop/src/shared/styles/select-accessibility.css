@@ -1,0 +1,46 @@
+.fs-select.placement-up .fs-select__popover {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom center;
+}
+
+.fs-select.placement-down .fs-select__popover {
+  transform-origin: top center;
+}
+
+.fs-select__popover {
+  animation: filescope-select-open 120ms ease-out;
+}
+
+.fs-select__trigger:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+@keyframes filescope-select-open {
+  from { opacity: 0; transform: translateY(-3px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-select__popover { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .fs-select__trigger,
+  .fs-select__popover,
+  .fs-select__option {
+    forced-color-adjust: auto;
+    border-color: ButtonText;
+  }
+  .fs-select__trigger:focus-visible,
+  .fs-select__option:focus-visible,
+  .fs-select__option.active {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+  .fs-select__option[aria-selected="true"] {
+    color: HighlightText;
+    background: Highlight;
+  }
+}
