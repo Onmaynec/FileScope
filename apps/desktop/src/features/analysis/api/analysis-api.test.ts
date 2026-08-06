@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeUrlInBrowser } from './analysis-api';
+import { analyzeUrlInBrowser, friendlyAnalysisError } from './analysis-api';
 
 describe('пассивный URL-анализ', () => {
   it('не выполняет сетевой запрос', () => {
@@ -20,5 +20,19 @@ describe('пассивный URL-анализ', () => {
 
   it('отклоняет опасные протоколы', () => {
     expect(() => analyzeUrlInBrowser('file:///C:/Windows/System32/cmd.exe')).toThrow('Поддерживаются только HTTP- и HTTPS-ссылки');
+  });
+});
+
+describe('понятные ошибки анализа', () => {
+  it('объясняет отсутствие доступа к файлу', () => {
+    expect(friendlyAnalysisError('Access is denied. (os error 5)')).toContain('Windows запретила чтение объекта');
+  });
+
+  it('объясняет исчезнувший файл', () => {
+    expect(friendlyAnalysisError('The system cannot find the file specified. (os error 2)')).toContain('Файл больше не найден');
+  });
+
+  it('сохраняет неизвестную диагностическую ошибку без подмены', () => {
+    expect(friendlyAnalysisError('custom parser failure')).toBe('custom parser failure');
   });
 });
