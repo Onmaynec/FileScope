@@ -1,0 +1,56 @@
+name: Fix v0.3.4 async history counter
+
+on:
+  push:
+    branches:
+      - chore/v0.3.4-readiness
+    paths:
+      - .github/fix-v034-home-count-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/v0.3.4-readiness
+          fetch-depth: 0
+      - name: Patch HomePage
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('apps/desktop/src/app/v020/V020App.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = """function HomePage({ navigate, chooseFile }: { navigate: (page: Page) => void; chooseFile: () => Promise<void> }) {
+  const reportCount = loadReports().length;
+  return <>
+"""
+          new = """function HomePage({ navigate, chooseFile }: { navigate: (page: Page) => void; chooseFile: () => Promise<void> }) {
+  const [reportCount, setReportCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void loadReports().then((reports) => {
+      if (active) setReportCount(reports.length);
+    });
+    return () => { active = false; };
+  }, []);
+
+  return <>
+"""
+          if old not in text:
+              raise SystemExit('HomePage fragment not found')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/src/app/v020/V020App.tsx
+          git diff --cached --check
+          git commit -m 'fix: загружать счётчик истории асинхронно'
+          git push origin HEAD:chore/v0.3.4-readiness
