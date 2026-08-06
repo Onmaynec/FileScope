@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 
 export interface SelectOption<Value extends string> {
@@ -22,6 +22,7 @@ export function Select<Value extends string>({ label, value, options, onChange, 
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const [placement, setPlacement] = useState<'down' | 'up'>('down');
 
   const close = useCallback((restoreFocus: boolean) => {
     setOpen(false);
@@ -29,6 +30,14 @@ export function Select<Value extends string>({ label, value, options, onChange, 
   }, []);
 
   useEffect(() => setActiveIndex(selectedIndex), [selectedIndex]);
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const estimatedHeight = Math.min(280, options.length * 41 + 12);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    setPlacement(spaceBelow < estimatedHeight && spaceAbove > spaceBelow ? 'up' : 'down');
+  }, [open, options.length]);
   useEffect(() => {
     if (!open) return;
     optionRefs.current[activeIndex]?.focus();
@@ -39,12 +48,14 @@ export function Select<Value extends string>({ label, value, options, onChange, 
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) close(true);
     };
-    const onResize = () => close(false);
+    const onViewportChange = () => close(false);
     document.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, true);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, true);
     };
   }, [close, open]);
 
@@ -80,7 +91,7 @@ export function Select<Value extends string>({ label, value, options, onChange, 
   };
 
   const selected = options[selectedIndex];
-  return <div className={`fs-select ${open ? 'open' : ''}`} ref={rootRef}>
+  return <div className={`fs-select ${open ? 'open' : ''} placement-${placement}`} ref={rootRef}>
     <button
       ref={triggerRef}
       type="button"
