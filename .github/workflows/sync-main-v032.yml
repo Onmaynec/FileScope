@@ -1,0 +1,35 @@
+name: Одноразовая синхронизация main для v0.3.2
+
+on:
+  push:
+    branches: [release/0.3.2-publish]
+    paths:
+      - '.github/workflows/sync-main-v032.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Влить main в release-ветку
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Получить release-ветку
+        uses: actions/checkout@v4
+        with:
+          ref: release/0.3.2-publish
+          fetch-depth: 0
+
+      - name: Синхронизировать историю и удалить workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git merge --no-ff --no-commit -X ours origin/main
+          rm .github/workflows/sync-main-v032.yml
+          git add -u .github/workflows/sync-main-v032.yml
+          git commit -m 'merge: синхронизировать main перед FileScope v0.3.2'
+          git push origin HEAD:release/0.3.2-publish
