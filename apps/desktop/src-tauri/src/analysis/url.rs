@@ -845,8 +845,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ambiguous_numeric_and_excessively_long_urls() {
-        assert!(parse_http_url("http://2130706433/").is_err());
+    fn normalizes_ambiguous_numeric_ipv4_and_rejects_excessively_long_urls() {
+        let numeric = parse_http_url("http://2130706433/").unwrap();
+        let address = match numeric.host().unwrap() {
+            Host::Ipv4(address) => IpAddr::V4(address),
+            other => panic!("numeric host must normalize to IPv4, got {other:?}"),
+        };
+        assert!(is_forbidden_ip(address));
         let long = format!("https://example.com/{}", "a".repeat(MAXIMUM_URL_LENGTH));
         assert!(parse_http_url(&long).is_err());
     }
