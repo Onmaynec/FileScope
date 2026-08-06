@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
@@ -7,12 +6,14 @@ const required = [
   'apps/desktop/src/features/analysis/model/history-repository.ts',
   'apps/desktop/src/features/analysis/model/report-migration.ts',
   'apps/desktop/src/features/analysis/model/history-privacy.ts',
+  'apps/desktop/src/features/analysis/model/fixtures/history/future-report-schema.json',
   'apps/desktop/src-tauri/src/analysis/properties.rs',
   'apps/desktop/src-tauri/src/analysis/fuzzing.rs',
   'apps/desktop/src-tauri/fuzz/Cargo.toml',
   '.github/workflows/security-fuzz.yml',
   'docs/architecture/history-storage-migration-v040.md',
   'docs/security/fuzzing-policy.md',
+  'docs/product/v0.3.4-manual-qa.md',
   'docs/product/v0.4.0-readiness-checklist.md',
 ];
 const errors = [];
@@ -39,6 +40,14 @@ if (existsSync(fixtureDirectory)) {
     } else {
       try { JSON.parse(text); } catch { errors.push(`${name}: invalid migration fixture`); }
     }
+  }
+}
+
+const futureReportFixturePath = join(fixtureDirectory, 'future-report-schema.json');
+if (existsSync(futureReportFixturePath)) {
+  const future = JSON.parse(readFileSync(futureReportFixturePath, 'utf8'));
+  if (future.storageVersion !== 1 || !(future.reportSchemaVersion > 1)) {
+    errors.push('future-report-schema.json must keep current storageVersion with future reportSchemaVersion');
   }
 }
 
