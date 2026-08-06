@@ -2,12 +2,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const root = process.cwd();
-const readJson = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'));
+const read = (path) => readFileSync(join(root, path), 'utf8');
+const readJson = (path) => JSON.parse(read(path));
 const rootPackage = readJson('package.json');
 const desktopPackage = readJson('apps/desktop/package.json');
 const contractsPackage = readJson('packages/contracts/package.json');
 const tauriConfig = readJson('apps/desktop/src-tauri/tauri.conf.json');
-const cargo = readFileSync(join(root, 'apps/desktop/src-tauri/Cargo.toml'), 'utf8');
+const cargo = read('apps/desktop/src-tauri/Cargo.toml');
 const cargoVersion = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 const versions = new Map([
   ['package.json', rootPackage.version],
@@ -26,7 +27,7 @@ if (mismatches.length) {
 
 const forbiddenPatterns = [
   { pattern: /FileScope\s+v?0\.2\.0/g, label: 'старый FileScope v0.2.0' },
-  { pattern: /FileScope\s+Core\s+0\.2/g, label: 'старый FileScope Core 0.2' },
+  { pattern: /FileScope\s+Core\s+0\.\d+(?:\.\d+)?/g, label: 'ручная строка FileScope Core версии' },
   { pattern: /const\s+APP_VERSION\s*=\s*['"][^'"]+['"]/g, label: 'ручная строка APP_VERSION' },
 ];
 const allowLegacyStorage = new Set([
@@ -55,7 +56,45 @@ if (!title.includes(expected)) {
   process.exit(1);
 }
 
-console.log(`FileScope version consistency OK: ${expected}`);
+const rustTypes = read('apps/desktop/src-tauri/src/analysis/types.rs');
+const frontendTypes = read('apps/desktop/src/features/analysis/model/types.ts');
+const sharedContracts = read('packages/contracts/src/analysis.ts');
+const reportFields = [
+  ['schema_version', 'schemaVersion'],
+  ['app_version', 'appVersion'],
+  ['analyzer_version', 'analyzerVersion'],
+  ['rule_set_version', 'ruleSetVersion'],
+  ['created_by', 'createdBy'],
+  ['analysis_completeness', 'analysisCompleteness'],
+  ['risk_level', 'riskLevel'],
+  ['risk_score', 'riskScore'],
+  ['limitations', 'limitations'],
+];
+const contractErrors = [];
+for (const [rustName, tsName] of reportFields) {
+  if (!new RegExp(`\\bpub\\s+${rustName}\\s*:`).test(rustTypes)) {
+    contractErrors.push(`Rust AnalysisReport missing ${rustName}`);
+  }
+  if (!new RegExp(`\\b${tsName}\\??\\s*:`).test(frontendTypes)) {
+    contractErrors.push(`Frontend AnalysisReport missing ${tsName}`);
+  }
+  if (!new RegExp(`\\b${tsName}\\??\\s*:`).test(sharedContracts)) {
+    contractErrors.push(`Shared contract missing ${tsName}`);
+  }
+}
+const rustSchema = Number(rustTypes.match(/REPORT_SCHEMA_VERSION:\s*u16\s*=\s*(\d+)/)?.[1]);
+const frontendSchema = Number(frontendTypes.match(/currentReportSchemaVersion\s*=\s*(\d+)/)?.[1]);
+const sharedSchema = Number(sharedContracts.match(/FILESCOPE_REPORT_SCHEMA_VERSION\s*=\s*(\d+)/)?.[1]);
+if (!rustSchema || rustSchema !== frontendSchema || rustSchema !== sharedSchema) {
+  contractErrors.push(`Schema mismatch: Rust=${rustSchema}, frontend=${frontendSchema}, contracts=${sharedSchema}`);
+}
+if (contractErrors.length) {
+  console.error('Report contract consistency failed:');
+  for (const error of contractErrors) console.error(`- ${error}`);
+  process.exit(1);
+}
+
+console.log(`FileScope version and report contract consistency OK: ${expected}, schema ${rustSchema}`);
 
 function* walk(directory) {
   for (const entry of readdirSync(directory)) {
