@@ -158,13 +158,15 @@ export class LegacyLocalStorageReportHistoryRepository implements ReportHistoryR
     const storage = resolveStorage();
     if (!storage) return unavailableSnapshot();
 
-    const keys = [
+    const directKeys = [
       HISTORY_STORAGE_KEY,
       ...LEGACY_REPORT_KEYS,
       HISTORY_MIGRATION_BACKUP_KEY,
-      ...LEGACY_HISTORY_MIGRATION_BACKUP_KEYS,
     ];
-    const failed = keys.filter((key) => !safeRemove(storage, key));
+    const failed = directKeys.filter((key) => !safeRemove(storage, key));
+    for (const key of LEGACY_HISTORY_MIGRATION_BACKUP_KEYS) {
+      if (!removeReportPayloadFromLegacyBackup(storage, key)) failed.push(key);
+    }
     if (failed.length > 0) {
       return {
         reports: [], status: 'unavailable', persisted: false,
@@ -246,12 +248,7 @@ function writeEnvelope(storage: BrowserStorage, reports: AnalysisReport[]): bool
   };
   const raw = JSON.stringify(envelope);
   if (utf8Size(raw) > MAXIMUM_HISTORY_PAYLOAD_BYTES) return false;
-  try {
-    storage.setItem(HISTORY_STORAGE_KEY, raw);
-    return true;
-  } catch {
-    return false;
-  }
+  return safeSet(storage, HISTORY_STORAGE_KEY, raw);
 }
 
 function backupBeforeMigration(storage: BrowserStorage, sourceKey: string, raw: string): void {
@@ -267,6 +264,29 @@ function backupBeforeMigration(storage: BrowserStorage, sourceKey: string, raw: 
   }
 }
 
+function removeReportPayloadFromLegacyBackup(storage: BrowserStorage, backupKey: string): boolean {
+  const result = safeGet(storage, backupKey);
+  if (!result.ok) return false;
+  if (result.value === null) return true;
+
+  let value: unknown;
+  try {
+    value = JSON.parse(result.value) as unknown;
+  } catch {
+    // Неразбираемый общий backup нельзя безопасно разделить: удаляем целиком,
+    // чтобы команда полного удаления гарантированно не оставляла report payload.
+    return safeRemove(storage, backupKey);
+  }
+  if (!isObject(value)) return safeRemove(storage, backupKey);
+
+  const retained = { ...value };
+  delete retained[HISTORY_STORAGE_KEY];
+  for (const reportKey of LEGACY_REPORT_KEYS) delete retained[reportKey];
+
+  if (Object.keys(retained).length === 0) return safeRemove(storage, backupKey);
+  return safeSet(storage, backupKey, JSON.stringify(retained));
+}
+
 function resolveStorage(): BrowserStorage | null {
   if (typeof localStorage === 'undefined') return null;
   return localStorage;
@@ -277,6 +297,15 @@ function safeGet(storage: BrowserStorage, key: string): StorageReadResult {
     return { ok: true, value: storage.getItem(key) };
   } catch {
     return { ok: false, value: null };
+  }
+}
+
+function safeSet(storage: BrowserStorage, key: string, value: string): boolean {
+  try {
+    storage.setItem(key, value);
+    return storage.getItem(key) === value;
+  } catch {
+    return false;
   }
 }
 
