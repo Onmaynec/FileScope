@@ -1,7 +1,7 @@
 {
   "name": "@filescope/desktop",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "FileScope Windows desktop application by Veilbyte",
   "author": "Veilbyte",
   "license": "SEE LICENSE IN ../../LICENSE",
@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "vite",
     "tauri": "tauri",
+    "icons": "tauri icon src-tauri/icons/filescope-logo.svg --output src-tauri/icons",
     "build": "tsc --noEmit && vite build",
     "build:desktop": "tauri build",
     "lint": "eslint . --max-warnings=0",

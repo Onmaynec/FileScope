@@ -6,10 +6,10 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('открывается функциональный главный экран v0.3.0', async ({ page }) => {
+test('открывается функциональный главный экран v0.3.1', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Реальный анализ до запуска' })).toBeVisible();
   await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
-  await expect(page.getByText('Версия 0.3.0')).toBeVisible();
+  await expect(page.getByText('Версия 0.3.1')).toBeVisible();
 });
 
 test('настройка закрытия окна по умолчанию использует системный трей', async ({ page }) => {
