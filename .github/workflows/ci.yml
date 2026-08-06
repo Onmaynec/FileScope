@@ -17,14 +17,14 @@ concurrency:
 jobs:
   quality:
     name: Lint, типы, тесты и frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
@@ -43,6 +43,9 @@ jobs:
       - name: Проверить версии manifests и production UI
         run: pnpm check:version
 
+      - name: Проверить готовность архитектуры к v0.4.0
+        run: pnpm check:v040-readiness
+
       - name: Проверить ESLint
         run: pnpm --filter @filescope/desktop lint
 
@@ -51,6 +54,9 @@ jobs:
 
       - name: Запустить unit-тесты
         run: pnpm --filter @filescope/desktop test
+
+      - name: Запустить быстрые property-тесты
+        run: pnpm --filter @filescope/desktop test:properties
 
       - name: Собрать frontend
         run: pnpm --filter @filescope/desktop build
@@ -63,7 +69,7 @@ jobs:
 
       - name: Сохранить отчёт Playwright при ошибке
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: FileScope-Playwright-Report
           path: apps/desktop/playwright-report
@@ -77,10 +83,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
@@ -101,11 +107,14 @@ jobs:
       - name: Проверить версии manifests и production UI
         run: pnpm check:version
 
+      - name: Проверить готовность архитектуры к v0.4.0
+        run: pnpm check:v040-readiness
+
       - name: Проверить форматирование Rust
         working-directory: apps/desktop/src-tauri
         run: cargo fmt --all --check
 
-      - name: Запустить тесты Rust
+      - name: Запустить тесты Rust и property-инварианты
         working-directory: apps/desktop/src-tauri
         run: cargo test --locked
 
@@ -120,7 +129,7 @@ jobs:
         run: git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
 
       - name: Сохранить установщик и исполняемый файл
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: FileScope-Windows-x64
           path: |
