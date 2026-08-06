@@ -1,0 +1,71 @@
+name: Одноразовая коррекция Rust fixture v0.3.3
+
+on:
+  push:
+    branches: [fix/0.3.3-bugfix]
+    paths:
+      - '.github/workflows/v033-rust-fixture-only.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/0.3.3-bugfix
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Закрыть тестовые writer handles
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('apps/desktop/src-tauri/src/analysis/file.rs')
+          lines = source.read_text(encoding='utf-8').splitlines()
+          targets = {
+              'file.write_all(b"FileScope test").unwrap();': False,
+              'file.write_all(&vec![1_u8; 2048]).unwrap();': False,
+          }
+
+          for marker in list(targets):
+              for index, line in enumerate(lines):
+                  if line.strip() != marker:
+                      continue
+                  indent = line[:len(line) - len(line.lstrip())]
+                  if index + 1 >= len(lines) or lines[index + 1].strip() != 'let path = file.into_temp_path();':
+                      lines.insert(index + 1, indent + 'let path = file.into_temp_path();')
+                  for call_index in range(index + 1, min(index + 12, len(lines))):
+                      if 'file.path().to_string_lossy().to_string()' in lines[call_index]:
+                          lines[call_index] = lines[call_index].replace('file.path()', 'path')
+                          targets[marker] = True
+                          break
+                  break
+
+          missing = [marker for marker, fixed in targets.items() if not fixed]
+          if missing:
+              raise SystemExit('Не исправлены fixtures: ' + ', '.join(missing))
+
+          source.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+          cd apps/desktop/src-tauri
+          cargo fmt --all
+          cd ../../..
+
+      - name: Зафиксировать только Rust-файл
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/src-tauri/src/analysis/file.rs
+          git commit -m 'test(file): закрывать writer перед стабильным чтением Windows'
+          git push origin HEAD:fix/0.3.3-bugfix
