@@ -1,0 +1,55 @@
+name: Security fuzz smoke
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'apps/desktop/src-tauri/src/analysis/**'
+      - 'apps/desktop/src-tauri/fuzz/**'
+      - '.github/workflows/security-fuzz.yml'
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz-smoke:
+    name: Bounded cargo-fuzz smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v7
+
+      - name: Установить nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Установить cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Проверить десериализацию отчётов
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run report_deserialization -- -max_total_time=20 -max_len=262144 -rss_limit_mb=1024
+
+      - name: Проверить пассивный URL-анализ
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run passive_url -- -max_total_time=20 -max_len=4096 -rss_limit_mb=1024
+
+      - name: Проверить Rule Engine
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run rule_engine -- -max_total_time=20 -max_len=65536 -rss_limit_mb=1024
+
+      - name: Сохранить crash inputs только при ошибке
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: FileScope-fuzz-crashes-${{ github.run_id }}
+          path: apps/desktop/src-tauri/fuzz/artifacts
+          if-no-files-found: ignore
+          retention-days: 3
