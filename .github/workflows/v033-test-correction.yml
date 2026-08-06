@@ -1,0 +1,43 @@
+name: Одноразовое уточнение URL regression test
+
+on:
+  push:
+    branches: [fix/0.3.3-bugfix]
+    paths:
+      - '.github/workflows/v033-test-correction.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/0.3.3-bugfix
+          fetch-depth: 0
+      - name: Исправить проверку numeric IPv4 bypass
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop/src-tauri/src/analysis/url.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''    fn rejects_ambiguous_numeric_and_excessively_long_urls() {\n        assert!(parse_http_url("http://2130706433/").is_err());\n        let long = format!("https://example.com/{}", "a".repeat(MAXIMUM_URL_LENGTH));\n        assert!(parse_http_url(&long).is_err());\n    }'''
+          new = '''    fn normalizes_ambiguous_numeric_ipv4_and_rejects_excessively_long_urls() {\n        let numeric = parse_http_url("http://2130706433/").unwrap();\n        let address = match numeric.host().unwrap() {\n            Host::Ipv4(address) => IpAddr::V4(address),\n            other => panic!("numeric host must normalize to IPv4, got {other:?}"),\n        };\n        assert!(is_forbidden_ip(address));\n        let long = format!("https://example.com/{}", "a".repeat(MAXIMUM_URL_LENGTH));\n        assert!(parse_http_url(&long).is_err());\n    }'''
+          if old not in text:
+              raise SystemExit('numeric URL test fragment missing')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cd apps/desktop/src-tauri
+          cargo fmt --all
+      - name: Удалить workflow и зафиксировать изменение
+        run: |
+          rm .github/workflows/v033-test-correction.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/src-tauri/src/analysis/url.rs
+          git add -u .github/workflows/v033-test-correction.yml
+          git commit -m 'test(url): проверить numeric IPv4 bypass после нормализации'
+          git push origin HEAD:fix/0.3.3-bugfix
