@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::types::{IndicatorSeverity, RiskLevel, ThreatIndicator};
 
 pub fn indicator(
@@ -21,8 +23,35 @@ pub fn indicator(
         recommendation: recommendation.to_string(),
     };
 
+    deduplicate_evidence(&mut value.evidence);
     normalize_pe_indicator(&mut value);
     value
+}
+
+fn deduplicate_evidence(evidence: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    evidence.retain(|value| seen.insert(normalize_evidence_key(value)));
+}
+
+fn normalize_evidence_key(value: &str) -> String {
+    value
+        .trim()
+        .rsplit('!')
+        .next()
+        .unwrap_or(value)
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn indicator_key(indicator: &ThreatIndicator) -> String {
+    let mut evidence = indicator
+        .evidence
+        .iter()
+        .map(|value| normalize_evidence_key(value))
+        .collect::<Vec<_>>();
+    evidence.sort();
+    evidence.dedup();
+    format!("{}|{}", indicator.id, evidence.join("|"))
 }
 
 fn normalize_pe_indicator(indicator: &mut ThreatIndicator) {
@@ -42,13 +71,7 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
     let names = indicator
         .evidence
         .iter()
-        .map(|value| {
-            value
-                .rsplit('!')
-                .next()
-                .unwrap_or(value)
-                .to_ascii_lowercase()
-        })
+        .map(|value| normalize_evidence_key(value))
         .collect::<Vec<_>>();
 
     let has = |candidates: &[&str]| {
@@ -114,16 +137,22 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
 }
 
 pub fn calculate_risk(indicators: &[ThreatIndicator]) -> (u16, RiskLevel) {
-    let score = indicators
+    let mut seen = HashSet::new();
+    let unique = indicators
+        .iter()
+        .filter(|indicator| seen.insert(indicator_key(indicator)))
+        .collect::<Vec<_>>();
+
+    let score = unique
         .iter()
         .map(|indicator| indicator.score)
         .sum::<u16>()
         .min(100);
 
-    let has_critical = indicators
+    let has_critical = unique
         .iter()
         .any(|indicator| indicator.severity == IndicatorSeverity::Critical);
-    let has_high = indicators
+    let has_high = unique
         .iter()
         .any(|indicator| indicator.severity == IndicatorSeverity::High);
 
@@ -229,6 +258,37 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_import_evidence_is_counted_once() {
+        let value = test_indicator(
+            "pe.imports.suspicious",
+            IndicatorSeverity::High,
+            34,
+            vec![
+                "kernel32.dll!VirtualAlloc",
+                "KERNELBASE.dll!virtualalloc",
+                "kernel32.dll!VirtualAlloc",
+            ],
+        );
+        assert_eq!(value.evidence, vec!["kernel32.dll!VirtualAlloc"]);
+        assert_eq!(value.score, 2);
+        assert_eq!(value.severity, IndicatorSeverity::Info);
+    }
+
+    #[test]
+    fn duplicate_indicators_do_not_inflate_total_score() {
+        let value = test_indicator(
+            "file.entropy.high",
+            IndicatorSeverity::Medium,
+            18,
+            vec!["Энтропия: 7.90"],
+        );
+        assert_eq!(
+            calculate_risk(&[value.clone(), value]),
+            (18, RiskLevel::Caution)
+        );
+    }
+
+    #[test]
     fn complete_injection_chain_remains_high_risk() {
         let values = vec![test_indicator(
             "pe.imports.suspicious",
@@ -238,10 +298,12 @@ mod tests {
                 "kernel32.dll!VirtualAllocEx",
                 "kernel32.dll!WriteProcessMemory",
                 "kernel32.dll!CreateRemoteThread",
+                "KERNELBASE.dll!CreateRemoteThread",
             ],
         )];
         assert_eq!(values[0].severity, IndicatorSeverity::High);
         assert_eq!(values[0].score, 52);
+        assert_eq!(values[0].evidence.len(), 3);
         assert_eq!(calculate_risk(&values).1, RiskLevel::HighRisk);
     }
 

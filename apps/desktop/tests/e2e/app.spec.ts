@@ -6,16 +6,18 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('открывается функциональный главный экран v0.3.1', async ({ page }) => {
+test('открывается функциональный главный экран v0.3.2', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Реальный анализ до запуска' })).toBeVisible();
   await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
-  await expect(page.getByText('Версия 0.3.1')).toBeVisible();
+  await expect(page.getByText('Версия 0.3.2')).toBeVisible();
 });
 
 test('настройка закрытия окна по умолчанию использует системный трей', async ({ page }) => {
   await page.getByRole('button', { name: /Настройки/ }).click();
   const closeBehavior = page.locator('.settings-v020 select').nth(1);
 
+  await expect(page.getByText('Версия приложения')).toBeVisible();
+  await expect(page.getByText('0.3.2', { exact: true })).toBeVisible();
   await expect(closeBehavior).toHaveValue('tray');
   await closeBehavior.selectOption('quit');
   await page.reload();
@@ -34,6 +36,7 @@ test('пассивный URL-анализ создаёт реальный лок
   await expect(page.getByRole('heading', { name: 'Высокий риск' })).toBeVisible();
   await expect(page.getByText('В URL встроены учётные данные')).toBeVisible();
   await expect(page.getByText('В параметрах найден вложенный адрес')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Кратко' })).toBeVisible();
 });
 
 test('отчёт сохраняется в локальной истории', async ({ page }) => {

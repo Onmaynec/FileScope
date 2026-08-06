@@ -5,24 +5,32 @@ function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+async function invokeAnalysis(command: string, arguments_: Record<string, unknown>): Promise<AnalysisReport> {
+  try {
+    return await invoke<AnalysisReport>(command, arguments_);
+  } catch (reason) {
+    throw new Error(friendlyAnalysisError(reason));
+  }
+}
+
 export async function analyzeFile(path: string, limits: AnalysisLimits): Promise<AnalysisReport> {
   if (!isTauriRuntime()) throw new Error('Локальный анализ файлов доступен только в desktop-сборке FileScope.');
-  return invoke<AnalysisReport>('analyze_local_file', { path, limits });
+  return invokeAnalysis('analyze_local_file', { path, limits });
 }
 
 export async function analyzeArchive(path: string, limits: AnalysisLimits): Promise<AnalysisReport> {
   if (!isTauriRuntime()) throw new Error('Анализ ZIP-архивов доступен только в desktop-сборке FileScope.');
-  return invoke<AnalysisReport>('analyze_local_archive', { path, limits });
+  return invokeAnalysis('analyze_local_archive', { path, limits });
 }
 
 export async function analyzeUrlPassive(url: string): Promise<AnalysisReport> {
-  if (isTauriRuntime()) return invoke<AnalysisReport>('analyze_url_passive', { url });
+  if (isTauriRuntime()) return invokeAnalysis('analyze_url_passive', { url });
   return analyzeUrlInBrowser(url);
 }
 
 export async function analyzeUrlActive(url: string, limits: AnalysisLimits): Promise<AnalysisReport> {
   if (!isTauriRuntime()) throw new Error('Активная URL-проверка доступна только в desktop-сборке FileScope.');
-  return invoke<AnalysisReport>('analyze_url_active', { url, limits });
+  return invokeAnalysis('analyze_url_active', { url, limits });
 }
 
 export function analyzeUrlInBrowser(input: string): AnalysisReport {
@@ -99,6 +107,32 @@ export function analyzeUrlInBrowser(input: string): AnalysisReport {
     isDemo: false,
     limitations: ['Пассивный анализ не выполняет сетевой запрос и не проверяет содержимое страницы.'],
   };
+}
+
+export function friendlyAnalysisError(reason: unknown): string {
+  const raw = reason instanceof Error ? reason.message : String(reason);
+  const value = raw.toLowerCase();
+
+  if (value.includes('access is denied') || value.includes('permission denied') || value.includes('os error 5')) {
+    return 'Windows запретила чтение объекта. Проверьте права доступа, закройте программу, которая удерживает файл, и повторите анализ.';
+  }
+  if (value.includes('not found') || value.includes('не удается найти') || value.includes('os error 2')) {
+    return 'Файл больше не найден по выбранному пути. Возможно, он был перемещён, удалён или помещён в карантин другой программой.';
+  }
+  if (value.includes('too large') || value.includes('слишком велик') || value.includes('превышает установленный лимит')) {
+    return 'Объект превышает защитный лимит FileScope. Увеличивайте лимит только для доверенного файла либо используйте отдельную изолированную среду.';
+  }
+  if (value.includes('invalid zip') || value.includes('архив') && value.includes('повреж')) {
+    return 'ZIP-структура повреждена или имеет неподдерживаемый формат. FileScope не извлекал содержимое и остановил структурный разбор.';
+  }
+  if (value.includes('timed out') || value.includes('timeout') || value.includes('истекло время')) {
+    return 'Активная URL-проверка не завершилась за установленное время. Пассивный результат остаётся доступным без повторного сетевого запроса.';
+  }
+  if (value.includes('dns') || value.includes('resolve')) {
+    return 'Не удалось определить IP-адрес домена. Проверьте адрес и сетевое подключение либо используйте только пассивный анализ.';
+  }
+
+  return raw || 'Анализ завершился неизвестной ошибкой. Повторите проверку и сохраните точный путь и тип объекта для отчёта.';
 }
 
 function cryptoId(): string {
