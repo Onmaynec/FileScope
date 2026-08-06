@@ -34,7 +34,7 @@ pub async fn analyze_local_file(
     limits: Option<AnalysisLimits>,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let limits = limits.unwrap_or_default();
+    let limits = limits.unwrap_or_default().validated()?;
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let joined =
         tauri::async_runtime::spawn_blocking(move || file::analyze_file(path, limits, &token))
@@ -55,7 +55,7 @@ pub async fn analyze_local_archive(
     limits: Option<AnalysisLimits>,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let limits = limits.unwrap_or_default();
+    let limits = limits.unwrap_or_default().validated()?;
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let joined =
         tauri::async_runtime::spawn_blocking(move || archive::analyze_zip(path, limits, &token))
@@ -75,7 +75,8 @@ pub fn analyze_url_passive(
     url: String,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let token = registry.start(&job_id, AnalysisLimits::default().job_timeout_ms)?;
+    let timeout_ms = AnalysisLimits::default().validated()?.job_timeout_ms;
+    let token = registry.start(&job_id, timeout_ms)?;
     let result = url::analyze_url_passive(url, &token);
     registry.finish(&job_id);
     result
@@ -88,7 +89,7 @@ pub async fn analyze_url_active(
     limits: Option<AnalysisLimits>,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let limits = limits.unwrap_or_default();
+    let limits = limits.unwrap_or_default().validated()?;
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let result = url::analyze_url_active(url, limits, &token).await;
     registry.finish(&job_id);
