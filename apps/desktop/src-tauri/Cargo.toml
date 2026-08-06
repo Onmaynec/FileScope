@@ -1,6 +1,6 @@
 [package]
 name = "filescope"
-version = "0.3.2"
+version = "0.3.3"
 description = "FileScope Windows desktop application by Veilbyte"
 authors = ["Veilbyte"]
 edition = "2021"
@@ -30,7 +30,7 @@ url = { version = "2", features = ["serde"] }
 goblin = "0.9"
 zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-tokio = { version = "1", features = ["net", "time"] }
+tokio = { version = "1", features = ["net", "time", "sync"] }
 
 [dev-dependencies]
 tempfile = "3"
