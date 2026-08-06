@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -203,7 +203,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Установить Node.js
         uses: actions/setup-node@v4
@@ -264,7 +264,7 @@ jobs:
       contents: write
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
