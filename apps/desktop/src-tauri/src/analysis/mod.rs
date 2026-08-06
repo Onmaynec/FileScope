@@ -47,6 +47,7 @@ pub async fn analyze_local_file(
             format!("Фоновое файловое задание завершилось аварийно: {error}"),
         )
     })??;
+    normalize_file_report_coverage(&mut report);
     attach_applied_limits(&mut report, &applied_limits);
     Ok(report)
 }
@@ -127,6 +128,46 @@ pub fn get_analysis_metadata() -> Value {
         "analyzerVersion": types::ANALYZER_VERSION,
         "ruleSetVersion": types::RULE_SET_VERSION,
     })
+}
+
+fn normalize_file_report_coverage(report: &mut AnalysisReport) {
+    if report.analysis_completeness != types::AnalysisCompleteness::Complete {
+        return;
+    }
+    let Some(size) = report.size_bytes else {
+        return;
+    };
+    let buffered = report
+        .metadata
+        .get("bytesBufferedForParser")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let inspected = buffered.min(1024 * 1024);
+    if let Some(metadata) = report.metadata.as_object_mut() {
+        metadata.insert("bytesInspected".to_string(), json!(inspected));
+    }
+
+    let generic_zip = report.detected_type.as_deref() == Some("ZIP archive");
+    let prefix_only_non_pe = report.detected_type.as_deref() != Some("Windows PE") && size > inspected;
+    if !generic_zip && !prefix_only_non_pe {
+        return;
+    }
+
+    report.analysis_completeness = types::AnalysisCompleteness::Partial;
+    if let Some(metadata) = report.metadata.as_object_mut() {
+        metadata.insert(
+            "coverageMode".to_string(),
+            json!(if generic_zip { "generic-zip-prefix-only" } else { "prefix-only" }),
+        );
+    }
+    let limitation = if generic_zip {
+        "ZIP распознан в режиме обычного файла: рассчитан SHA-256 и проверены общие признаки, но central directory и записи архива не разбирались. Используйте режим ZIP-архива для структурной проверки."
+    } else {
+        "Для этого формата контентные эвристики проверили только начальный участок файла; SHA-256 рассчитан по всему открытому объекту."
+    };
+    if !report.limitations.iter().any(|item| item == limitation) {
+        report.limitations.push(limitation.to_string());
+    }
 }
 
 fn attach_applied_limits(report: &mut AnalysisReport, limits: &AnalysisLimits) {
