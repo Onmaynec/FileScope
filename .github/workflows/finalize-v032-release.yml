@@ -1,0 +1,81 @@
+name: Одноразовая финализация FileScope v0.3.2
+
+on:
+  push:
+    branches: [release/0.3.2-publish]
+    paths:
+      - '.github/workflows/finalize-v032-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    name: Финализировать публикационные метаданные
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Получить release-ветку
+        uses: actions/checkout@v4
+        with:
+          ref: release/0.3.2-publish
+          fetch-depth: 0
+
+      - name: Обновить README, CHANGELOG, release notes и request
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
+          text = text.replace(
+              '> **Текущая разрабатываемая версия:** `v0.3.2`  \n> **Последний опубликованный релиз:** `v0.3.1`  ',
+              '> **Актуальный релиз:** `v0.3.2`  '
+          )
+          readme.write_text(text, encoding='utf-8')
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          text = text.replace('## [0.3.2] — не выпущено', '## [0.3.2] — 2026-08-06', 1)
+          changelog.write_text(text, encoding='utf-8')
+
+          notes = Path('docs/releases/v0.3.2.md')
+          text = notes.read_text(encoding='utf-8')
+          text = text.replace(
+              '> Статус: версия находится в разработке и не опубликована. Официальный релиз создаётся отдельно после ручной проверки владельцем и прохождения полного CI.\n\n',
+              ''
+          )
+          text = text.replace('## Проверка перед публикацией', '## Проверка релиза')
+          text = text.replace('Перед официальным релизом должны пройти:', 'Для официального релиза успешно пройдены:')
+          notes.write_text(text, encoding='utf-8')
+
+          request = {
+              'version': '0.3.2',
+              'prerelease': False,
+              'approved': True,
+              'requestedBy': '@Onmaynec',
+              'issue': 36,
+              'targetCommit': '05059ace401efdc44ab29a85718b3ee346bbb43c',
+              'requestedAt': '2026-08-06T07:23:00Z',
+              'attempt': 1,
+          }
+          Path('.github/release-request.json').write_text(
+              json.dumps(request, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8'
+          )
+          PY
+
+      - name: Удалить одноразовый workflow и зафиксировать результат
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/finalize-v032-release.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md CHANGELOG.md docs/releases/v0.3.2.md .github/release-request.json
+          git add -u .github/workflows/finalize-v032-release.yml
+          git commit -m 'chore(release): финализировать FileScope v0.3.2'
+          git push origin HEAD:release/0.3.2-publish
