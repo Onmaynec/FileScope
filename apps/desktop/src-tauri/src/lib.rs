@@ -1,5 +1,7 @@
 mod analysis;
 #[cfg(not(feature = "fuzzing"))]
+mod history_protection;
+#[cfg(not(feature = "fuzzing"))]
 mod history_storage;
 #[cfg(not(feature = "fuzzing"))]
 mod window_lifecycle;
@@ -51,6 +53,7 @@ pub fn run() {
             analysis::get_analysis_metadata,
             history_storage::history_load,
             history_storage::history_inspect,
+            history_storage::history_protection_status,
             history_storage::history_save_report,
             history_storage::history_replace_all,
             history_storage::history_rewrite_all,
