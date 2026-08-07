@@ -53,8 +53,10 @@ const RETENTION_VALUES = new Set<HistoryRetention>(['session', '1d', '7d', '30d'
 
 export class LocalSettingsService implements ISettingsService {
   load(): AppPreferences {
+    const storage = resolveStorage();
+    if (!storage) return cloneDefaults();
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = storage.getItem(STORAGE_KEY);
       if (!raw) return cloneDefaults();
       const parsed = JSON.parse(raw) as Partial<AppPreferences>;
       return {
@@ -71,8 +73,10 @@ export class LocalSettingsService implements ISettingsService {
   }
 
   save(preferences: AppPreferences): void {
+    const storage = resolveStorage();
+    if (!storage) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      storage.setItem(STORAGE_KEY, JSON.stringify({
         ...preferences,
         history: sanitizeHistoryPreferences(preferences.history),
       }));
@@ -82,10 +86,13 @@ export class LocalSettingsService implements ISettingsService {
   }
 
   reset(): AppPreferences {
-    try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ошибка локального хранилища не должна ломать интерфейс.
+    const storage = resolveStorage();
+    if (storage) {
+      try {
+        storage.removeItem(STORAGE_KEY);
+      } catch {
+        // Ошибка локального хранилища не должна ломать интерфейс.
+      }
     }
     return cloneDefaults();
   }
@@ -108,6 +115,15 @@ export function sanitizeHistoryPreferences(value: unknown): HistoryPreferences {
       ? candidate.preserveFullUrl
       : DEFAULT_HISTORY_PREFERENCES.preserveFullUrl,
   };
+}
+
+function resolveStorage(): Storage | null {
+  if (typeof globalThis === 'undefined' || !('localStorage' in globalThis)) return null;
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function cloneDefaults(): AppPreferences {
