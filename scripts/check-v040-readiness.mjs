@@ -2,6 +2,13 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const root = process.cwd();
+const fuzzTargets = [
+  'report_deserialization',
+  'passive_url',
+  'rule_engine',
+  'file_format_pe',
+  'zip_metadata',
+];
 const required = [
   'apps/desktop/src/features/analysis/model/history-repository.ts',
   'apps/desktop/src/features/analysis/model/tauri-history-repository.ts',
@@ -14,6 +21,7 @@ const required = [
   'apps/desktop/src-tauri/src/analysis/properties.rs',
   'apps/desktop/src-tauri/src/analysis/fuzzing.rs',
   'apps/desktop/src-tauri/fuzz/Cargo.toml',
+  ...fuzzTargets.map((target) => `apps/desktop/src-tauri/fuzz/fuzz_targets/${target}.rs`),
   '.github/workflows/security-fuzz.yml',
   'docs/architecture/history-storage-migration-v040.md',
   'docs/architecture/history-storage-protection-v040.md',
@@ -84,12 +92,41 @@ if (existsSync(historyRepositoryPath)) {
   }
 }
 
-for (const target of ['report_deserialization', 'passive_url', 'rule_engine']) {
+for (const target of fuzzTargets) {
   const path = join(root, `apps/desktop/src-tauri/fuzz/fuzz_targets/${target}.rs`);
   if (!existsSync(path)) continue;
   const text = readFileSync(path, 'utf8');
-  for (const forbidden of ['std::process::Command', 'reqwest::', 'std::fs::write', 'File::create']) {
+  for (const forbidden of [
+    'std::process::Command',
+    'std::fs::write',
+    'File::create',
+    'OpenOptions::new',
+    'TcpStream',
+    'UdpSocket',
+    'reqwest::',
+  ]) {
     if (text.includes(forbidden)) errors.push(`${target}: forbidden fuzz side effect ${forbidden}`);
+  }
+}
+
+const fuzzEntrypointsPath = join(root, 'apps/desktop/src-tauri/src/analysis/fuzzing.rs');
+if (existsSync(fuzzEntrypointsPath)) {
+  const fuzzEntrypoints = readFileSync(fuzzEntrypointsPath, 'utf8');
+  for (const requiredLiteral of ['file_format_and_pe', 'zip_metadata', 'ZipArchive::new(Cursor::new(data))', 'Object::parse(data)']) {
+    if (!fuzzEntrypoints.includes(requiredLiteral)) errors.push(`fuzzing.rs missing ${requiredLiteral}`);
+  }
+  for (const forbidden of ['std::process::Command', 'std::fs::write', 'File::create', 'reqwest::Client', 'TcpStream::connect']) {
+    if (fuzzEntrypoints.includes(forbidden)) errors.push(`fuzzing.rs: forbidden side effect ${forbidden}`);
+  }
+}
+
+const fuzzManifestPath = join(root, 'apps/desktop/src-tauri/fuzz/Cargo.toml');
+if (existsSync(fuzzManifestPath)) {
+  const manifest = readFileSync(fuzzManifestPath, 'utf8');
+  for (const target of fuzzTargets) {
+    if (!manifest.includes(`name = "${target}"`) || !manifest.includes(`path = "fuzz_targets/${target}.rs"`)) {
+      errors.push(`fuzz Cargo.toml missing registered target ${target}`);
+    }
   }
 }
 
@@ -100,6 +137,18 @@ if (existsSync(fuzzWorkflowPath)) {
   if (/contents:\s*write|environment:\s*production|secrets\./.test(workflow)) errors.push('security-fuzz workflow has forbidden privilege/secrets');
   const retention = [...workflow.matchAll(/retention-days:\s*(\d+)/g)].map((match) => Number(match[1]));
   if (retention.some((days) => days > 3)) errors.push('fuzz crash retention must be <= 3 days');
+  for (const target of fuzzTargets) {
+    if (!workflow.includes(`cargo fuzz run ${target}`)) errors.push(`security-fuzz workflow missing target ${target}`);
+  }
+  if (!workflow.includes("github.event_name == 'pull_request' && '20' || '600'")) {
+    errors.push('security-fuzz workflow must keep 20s PR smoke and 600s scheduled/manual profile');
+  }
+  if (!workflow.includes('-timeout=10') || !workflow.includes('-rss_limit_mb=${FUZZ_RSS_MB}')) {
+    errors.push('security-fuzz workflow must keep per-target timeout and RSS bounds');
+  }
+  if (!/schedule:\s*\n\s*- cron:/m.test(workflow) || !/workflow_dispatch:/m.test(workflow)) {
+    errors.push('security-fuzz workflow must support scheduled and manual long runs');
+  }
 }
 
 for (const workflow of walk(join(root, '.github/workflows'))) {
