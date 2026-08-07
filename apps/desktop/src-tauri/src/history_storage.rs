@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -277,13 +277,14 @@ impl HistoryStore {
         }
 
         self.cleanup_old_generations();
+        let status = if envelope.reports.is_empty() {
+            HistoryStorageStatus::Empty
+        } else {
+            HistoryStorageStatus::Ready
+        };
         HistoryStorageSnapshot {
             reports: envelope.reports,
-            status: if envelope.reports.is_empty() {
-                HistoryStorageStatus::Empty
-            } else {
-                HistoryStorageStatus::Ready
-            },
+            status,
             persisted: true,
             size_bytes: raw.len() as u64,
             generation: Some(generation),
