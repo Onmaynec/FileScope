@@ -85,14 +85,18 @@ for (const [rustName, tsName] of reportFields) {
 const rustSchema = Number(rustTypes.match(/REPORT_SCHEMA_VERSION:\s*u16\s*=\s*(\d+)/)?.[1]);
 const frontendSchema = Number(frontendTypes.match(/currentReportSchemaVersion\s*=\s*(\d+)/)?.[1]);
 const sharedSchema = Number(sharedContracts.match(/FILESCOPE_REPORT_SCHEMA_VERSION\s*=\s*(\d+)/)?.[1]);
-const frontendStorage = read('apps/desktop/src/features/analysis/model/history-repository.ts');
-const frontendStorageVersion = Number(frontendStorage.match(/HISTORY_STORAGE_VERSION\s*=\s*(\d+)/)?.[1]);
+const tauriHistoryRepository = read('apps/desktop/src/features/analysis/model/tauri-history-repository.ts');
+const rustHistoryStorage = read('apps/desktop/src-tauri/src/history_storage.rs');
+const frontendStorageVersion = Number(tauriHistoryRepository.match(/TAURI_HISTORY_STORAGE_VERSION\s*=\s*(\d+)/)?.[1]);
+const rustStorageVersion = Number(rustHistoryStorage.match(/HISTORY_STORAGE_VERSION:\s*u16\s*=\s*(\d+)/)?.[1]);
 const sharedStorageVersion = Number(sharedContracts.match(/FILESCOPE_HISTORY_STORAGE_VERSION\s*=\s*(\d+)/)?.[1]);
 if (!rustSchema || rustSchema !== frontendSchema || rustSchema !== sharedSchema) {
   contractErrors.push(`Schema mismatch: Rust=${rustSchema}, frontend=${frontendSchema}, contracts=${sharedSchema}`);
 }
-if (!frontendStorageVersion || frontendStorageVersion !== sharedStorageVersion) {
-  contractErrors.push(`History storage mismatch: frontend=${frontendStorageVersion}, contracts=${sharedStorageVersion}`);
+if (!frontendStorageVersion
+  || frontendStorageVersion !== rustStorageVersion
+  || frontendStorageVersion !== sharedStorageVersion) {
+  contractErrors.push(`History storage mismatch: frontend=${frontendStorageVersion}, Rust=${rustStorageVersion}, contracts=${sharedStorageVersion}`);
 }
 if (contractErrors.length) {
   console.error('Report contract consistency failed:');
@@ -100,7 +104,7 @@ if (contractErrors.length) {
   process.exit(1);
 }
 
-console.log(`FileScope version and report contract consistency OK: ${expected}, schema ${rustSchema}`);
+console.log(`FileScope version and report contract consistency OK: ${expected}, schema ${rustSchema}, history storage ${rustStorageVersion}`);
 
 function* walk(directory) {
   for (const entry of readdirSync(directory)) {
