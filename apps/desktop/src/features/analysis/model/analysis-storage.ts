@@ -3,14 +3,13 @@ import {
   type AnalysisLimits,
   type AnalysisReport,
 } from './types';
-import {
-  reportHistoryRepository,
-  type ReportHistorySnapshot,
-} from './history-repository';
+import type { ReportHistorySnapshot } from './history-repository';
+import { createProductionReportHistoryRepository } from './tauri-history-repository';
 
 const LIMITS_KEY = 'filescope:limits:v1';
 const LEGACY_LIMIT_KEYS = ['filescope:v0.2.0:limits'];
 const LIMITS_MIGRATION_BACKUP_KEY = 'filescope:migration-backup:v0.3.3';
+const reportHistoryRepository = createProductionReportHistoryRepository();
 
 export { migrateReport } from './report-migration';
 
