@@ -160,6 +160,23 @@ impl HistoryStore {
         self.publish(reports.into_iter().take(MAXIMUM_REPORTS).collect())
     }
 
+    fn rewrite_all(&self, reports: Vec<AnalysisReport>) -> HistoryStorageSnapshot {
+        let current = self.load();
+        if !can_mutate(current.status) {
+            return current;
+        }
+        if reports
+            .iter()
+            .any(|report| report.schema_version != REPORT_SCHEMA_VERSION)
+        {
+            return unsupported(format!(
+                "Policy rewrite содержит отчёт неподдерживаемой schemaVersion; ожидается {}.",
+                REPORT_SCHEMA_VERSION
+            ));
+        }
+        self.publish(reports.into_iter().take(MAXIMUM_REPORTS).collect())
+    }
+
     fn delete_report(&self, id: &str) -> HistoryStorageSnapshot {
         let current = self.load();
         if !can_mutate(current.status) {
@@ -498,6 +515,15 @@ pub fn history_replace_all(
 }
 
 #[tauri::command]
+pub fn history_rewrite_all(
+    app: AppHandle,
+    state: State<'_, HistoryStorageState>,
+    reports: Vec<AnalysisReport>,
+) -> HistoryStorageSnapshot {
+    with_store(&app, &state, |store| store.rewrite_all(reports))
+}
+
+#[tauri::command]
 pub fn history_delete_report(
     app: AppHandle,
     state: State<'_, HistoryStorageState>,
@@ -691,6 +717,19 @@ mod tests {
         assert_eq!(migrated.reports[0].id, "legacy");
         let ignored = store.replace_if_empty(vec![sample_report("second")]);
         assert_eq!(ignored.reports[0].id, "legacy");
+    }
+
+    #[test]
+    fn rewrite_all_updates_existing_safe_store_for_policy_enforcement() {
+        let temp = TempDir::new().unwrap();
+        let store = HistoryStore::new(temp.path().join("history"));
+        store.save_report(sample_report("one"));
+        store.save_report(sample_report("two"));
+        let rewritten = store.rewrite_all(vec![sample_report("two")]);
+        assert_eq!(rewritten.status, HistoryStorageStatus::Ready);
+        assert!(rewritten.persisted);
+        assert_eq!(rewritten.reports.len(), 1);
+        assert_eq!(rewritten.reports[0].id, "two");
     }
 
     #[test]

@@ -53,6 +53,7 @@ pub fn run() {
             history_storage::history_inspect,
             history_storage::history_save_report,
             history_storage::history_replace_all,
+            history_storage::history_rewrite_all,
             history_storage::history_delete_report,
             history_storage::history_clear,
             set_close_behavior,
