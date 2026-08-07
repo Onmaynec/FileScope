@@ -1,5 +1,6 @@
-import { AlertTriangle, Archive, CheckCircle2, Copy, Download, FileCode2, Globe2, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Archive, Check, CheckCircle2, Download, FileCode2, Globe2, ShieldAlert } from 'lucide-react';
 import { downloadReport } from '../model/report-export';
+import CopyButton from '../../../shared/ui/CopyButton';
 import { riskLabels, severityLabels, type AnalysisReport } from '../model/types';
 
 interface ReportViewProps {
@@ -10,7 +11,6 @@ interface ReportViewProps {
 export function ReportView({ report, compact = false }: ReportViewProps) {
   const RiskIcon = report.riskLevel === 'noThreatsFound' ? CheckCircle2 : report.riskLevel === 'caution' ? AlertTriangle : ShieldAlert;
   const partialReason = getPartialReason(report);
-  const copySummary = () => navigator.clipboard?.writeText(buildShortSummary(report));
 
   return (
     <section className={`analysis-report risk-${report.riskLevel} ${compact ? 'analysis-report--compact' : ''}`} aria-label="Результат анализа">
@@ -22,7 +22,7 @@ export function ReportView({ report, compact = false }: ReportViewProps) {
           <p>{report.displayName} · оценка {report.riskScore}/100 · {report.durationMs} мс</p>
         </div>
         <div className="analysis-report__actions">
-          <button className="button button-secondary" onClick={() => void copySummary()}><Copy />Кратко</button>
+          <CopyButton text={buildShortSummary(report)} successIcon={CheckCircle2}><span>Кратко</span></CopyButton>
           <button className="button button-secondary" onClick={() => void downloadReport(report, 'json')}><Download />JSON</button>
           <button className="button button-secondary" onClick={() => void downloadReport(report, 'html')}><Download />HTML</button>
         </div>
@@ -41,7 +41,7 @@ export function ReportView({ report, compact = false }: ReportViewProps) {
 
       {partialReason && <div className="status-banner warning" role="status"><AlertTriangle /><div><strong>Анализ выполнен частично</strong><span>{partialReason}</span></div></div>}
 
-      {report.sha256 && <div className="analysis-hash"><span><strong>SHA-256 объекта</strong><code>{report.sha256}</code></span><button className="icon-button" title="Копировать SHA-256" onClick={() => void navigator.clipboard?.writeText(report.sha256 ?? '')}><Copy /></button></div>}
+      {report.sha256 && <div className="analysis-hash"><span><strong>SHA-256 объекта</strong><code>{report.sha256}</code></span><CopyButton text={report.sha256} successIcon={Check} className="icon-button" aria-label="Копировать SHA-256" /></div>}
 
       <section className="analysis-section">
         <div className="card-title-row"><div><h3>Обнаруженные признаки</h3><p>{report.indicators.length ? `Найдено: ${report.indicators.length}` : 'Признаки, повышающие риск, не обнаружены.'}</p></div></div>

@@ -14,5 +14,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     passWithNoTests: false,
     reporters: ['default'],
+    globals: true,
+    setupFiles: ['@testing-library/jest-dom/vitest'],
   },
 });
