@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { HistoryPreferences } from '../../../shared/services/settings-service';
+import { minimizeReportForFutureStorage } from './history-privacy';
 import {
   HISTORY_STORAGE_KEY,
   HISTORY_STORAGE_VERSION,
@@ -8,6 +9,7 @@ import {
 import {
   TauriReportHistoryRepository,
   type HistoryCommandBridge,
+  type HistoryProtectionStatus,
 } from './tauri-history-repository';
 import type { AnalysisReport } from './types';
 
@@ -147,6 +149,23 @@ describe('Tauri report history repository v0.4.0', () => {
     expect(fake.calls).toEqual(['history_load', 'history_rewrite_all']);
   });
 
+  it('переписывает уже минимизированную plaintext generation в DPAPI', async () => {
+    const prepared = minimizeReportForFutureStorage(sampleUrlReport('plaintext'));
+    const fake = createBridge([prepared], 'plaintext');
+    const repository = new TauriReportHistoryRepository(fake.bridge);
+
+    const loaded = await repository.load();
+
+    expect(loaded.status).toBe('ready');
+    expect(fake.calls).toEqual([
+      'history_load',
+      'history_protection_status',
+      'history_rewrite_all',
+    ]);
+    expect(fake.protection()).toBe('dpapiCurrentUser');
+    expect(loaded.message).toContain('DPAPI');
+  });
+
   it('явное сохранение полного URL оставляет query/fragment, но удаляет credentials и sensitive headers', async () => {
     const fake = createBridge();
     const repository = repositoryWithPolicy(fake.bridge, {
@@ -197,28 +216,44 @@ function defaultPolicy(): HistoryPreferences {
   };
 }
 
-function createBridge(initial: AnalysisReport[] = []) {
+function createBridge(
+  initial: AnalysisReport[] = [],
+  initialProtection: HistoryProtectionStatus = 'dpapiCurrentUser',
+) {
   let reports = [...initial];
+  let protection = initialProtection;
   const calls: string[] = [];
   const bridge: HistoryCommandBridge = async <T>(command: string, args?: Record<string, unknown>) => {
     calls.push(command);
+    if (command === 'history_protection_status') {
+      return {
+        status: protection,
+        dpapiGenerations: protection === 'dpapiCurrentUser' ? 1 : 0,
+        plaintextGenerations: protection === 'plaintext' ? 1 : 0,
+      } as T;
+    }
     if (command === 'history_replace_all' && reports.length === 0) {
       reports = [...((args?.reports as AnalysisReport[] | undefined) ?? [])];
+      protection = 'dpapiCurrentUser';
     } else if (command === 'history_rewrite_all') {
       reports = [...((args?.reports as AnalysisReport[] | undefined) ?? [])];
+      protection = 'dpapiCurrentUser';
     } else if (command === 'history_save_report') {
       const report = args?.report as AnalysisReport;
       reports = [report, ...reports.filter((item) => item.id !== report.id)];
+      protection = 'dpapiCurrentUser';
     } else if (command === 'history_delete_report') {
       reports = reports.filter((item) => item.id !== args?.id);
+      protection = reports.length ? 'dpapiCurrentUser' : 'empty';
     } else if (command === 'history_clear') {
       reports = [];
+      protection = 'empty';
     } else if (command !== 'history_load' && command !== 'history_inspect') {
       throw new Error(`unexpected command ${command}`);
     }
     return snapshot(reports) as T;
   };
-  return { bridge, calls, reports: () => reports };
+  return { bridge, calls, reports: () => reports, protection: () => protection };
 }
 
 function snapshot(reports: AnalysisReport[]) {
@@ -227,7 +262,7 @@ function snapshot(reports: AnalysisReport[]) {
     status: reports.length ? 'ready' : 'empty',
     persisted: true,
     sizeBytes: JSON.stringify(reports).length,
-    generation: reports.length ? 'test-generation.json' : undefined,
+    generation: reports.length ? 'test-generation.bin' : undefined,
   };
 }
 
