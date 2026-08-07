@@ -1,5 +1,13 @@
 export type ThemePreference = 'system' | 'dark' | 'light';
 export type CloseBehavior = 'tray' | 'quit';
+export type HistoryRetention = 'session' | '1d' | '7d' | '30d' | 'forever';
+
+export interface HistoryPreferences {
+  enabled: boolean;
+  retention: HistoryRetention;
+  preserveFullPath: boolean;
+  preserveFullUrl: boolean;
+}
 
 export interface AppPreferences {
   theme: ThemePreference;
@@ -11,6 +19,7 @@ export interface AppPreferences {
   automaticUpdates: boolean;
   exclusions: string[];
   lastPage: string;
+  history: HistoryPreferences;
 }
 
 export interface ISettingsService {
@@ -18,6 +27,13 @@ export interface ISettingsService {
   save(preferences: AppPreferences): void;
   reset(): AppPreferences;
 }
+
+export const DEFAULT_HISTORY_PREFERENCES: HistoryPreferences = {
+  enabled: true,
+  retention: 'forever',
+  preserveFullPath: false,
+  preserveFullUrl: false,
+};
 
 const DEFAULT_PREFERENCES: AppPreferences = {
   theme: 'dark',
@@ -29,15 +45,17 @@ const DEFAULT_PREFERENCES: AppPreferences = {
   automaticUpdates: true,
   exclusions: [],
   lastPage: 'home',
+  history: DEFAULT_HISTORY_PREFERENCES,
 };
 
 const STORAGE_KEY = 'filescope.preferences.v1';
+const RETENTION_VALUES = new Set<HistoryRetention>(['session', '1d', '7d', '30d', 'forever']);
 
 export class LocalSettingsService implements ISettingsService {
   load(): AppPreferences {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { ...DEFAULT_PREFERENCES };
+      if (!raw) return cloneDefaults();
       const parsed = JSON.parse(raw) as Partial<AppPreferences>;
       return {
         ...DEFAULT_PREFERENCES,
@@ -45,15 +63,19 @@ export class LocalSettingsService implements ISettingsService {
         exclusions: Array.isArray(parsed.exclusions)
           ? parsed.exclusions.filter((item): item is string => typeof item === 'string')
           : [],
+        history: sanitizeHistoryPreferences(parsed.history),
       };
     } catch {
-      return { ...DEFAULT_PREFERENCES };
+      return cloneDefaults();
     }
   }
 
   save(preferences: AppPreferences): void {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        ...preferences,
+        history: sanitizeHistoryPreferences(preferences.history),
+      }));
     } catch {
       // Ошибка локального хранилища не должна блокировать запуск приложения.
     }
@@ -65,8 +87,35 @@ export class LocalSettingsService implements ISettingsService {
     } catch {
       // Ошибка локального хранилища не должна ломать интерфейс.
     }
-    return { ...DEFAULT_PREFERENCES };
+    return cloneDefaults();
   }
+}
+
+export function sanitizeHistoryPreferences(value: unknown): HistoryPreferences {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { ...DEFAULT_HISTORY_PREFERENCES };
+  }
+  const candidate = value as Partial<HistoryPreferences>;
+  return {
+    enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : DEFAULT_HISTORY_PREFERENCES.enabled,
+    retention: typeof candidate.retention === 'string' && RETENTION_VALUES.has(candidate.retention as HistoryRetention)
+      ? candidate.retention as HistoryRetention
+      : DEFAULT_HISTORY_PREFERENCES.retention,
+    preserveFullPath: typeof candidate.preserveFullPath === 'boolean'
+      ? candidate.preserveFullPath
+      : DEFAULT_HISTORY_PREFERENCES.preserveFullPath,
+    preserveFullUrl: typeof candidate.preserveFullUrl === 'boolean'
+      ? candidate.preserveFullUrl
+      : DEFAULT_HISTORY_PREFERENCES.preserveFullUrl,
+  };
+}
+
+function cloneDefaults(): AppPreferences {
+  return {
+    ...DEFAULT_PREFERENCES,
+    exclusions: [...DEFAULT_PREFERENCES.exclusions],
+    history: { ...DEFAULT_HISTORY_PREFERENCES },
+  };
 }
 
 export const settingsService: ISettingsService = new LocalSettingsService();
