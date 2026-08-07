@@ -152,7 +152,7 @@ jobs:
           }
 
       - name: Установить Node.js
-        uses: actions/setup-node@2499707fd4a732959b4cb45a1fe1044823aa9084 # v6.5.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
 
@@ -201,7 +201,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Установить Node.js
-        uses: actions/setup-node@2499707fd4a732959b4cb45a1fe1044823aa9084 # v6.5.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
 
