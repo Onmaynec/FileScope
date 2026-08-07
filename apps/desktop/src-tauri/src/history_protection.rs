@@ -23,34 +23,65 @@ pub fn unprotect_payload(raw: &[u8]) -> Result<(Vec<u8>, PayloadProtection), Str
 
 #[cfg(windows)]
 mod platform {
-    use std::{ptr, slice};
-
-    use windows_sys::Win32::{
-        Foundation::GetLastError,
-        Security::Cryptography::{
-            CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB,
-            CRYPTPROTECT_UI_FORBIDDEN,
-        },
-        System::Memory::LocalFree,
-    };
+    use std::{ffi::c_void, ptr, slice};
 
     use super::{PayloadProtection, DPAPI_MAGIC};
+
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct DataBlob {
+        cb_data: u32,
+        pb_data: *mut u8,
+    }
+
+    #[link(name = "Crypt32")]
+    unsafe extern "system" {
+        fn CryptProtectData(
+            data_in: *const DataBlob,
+            data_description: *const u16,
+            optional_entropy: *const DataBlob,
+            reserved: *mut c_void,
+            prompt: *mut c_void,
+            flags: u32,
+            data_out: *mut DataBlob,
+        ) -> i32;
+        fn CryptUnprotectData(
+            data_in: *const DataBlob,
+            data_description: *mut *mut u16,
+            optional_entropy: *const DataBlob,
+            reserved: *mut c_void,
+            prompt: *mut c_void,
+            flags: u32,
+            data_out: *mut DataBlob,
+        ) -> i32;
+    }
+
+    #[link(name = "Kernel32")]
+    unsafe extern "system" {
+        fn GetLastError() -> u32;
+        fn LocalFree(memory: *mut c_void) -> *mut c_void;
+    }
 
     pub fn protect(raw: &[u8]) -> Result<(Vec<u8>, PayloadProtection), String> {
         let length = u32::try_from(raw.len())
             .map_err(|_| "DPAPI payload превышает максимально поддерживаемый размер.".to_string())?;
-        let input = CRYPT_INTEGER_BLOB {
-            cbData: length,
-            pbData: raw.as_ptr() as *mut u8,
+        let input = DataBlob {
+            cb_data: length,
+            pb_data: raw.as_ptr() as *mut u8,
         };
-        let mut output = CRYPT_INTEGER_BLOB::default();
+        let mut output = DataBlob {
+            cb_data: 0,
+            pb_data: ptr::null_mut(),
+        };
         let success = unsafe {
             CryptProtectData(
                 &input,
                 ptr::null(),
                 ptr::null(),
-                ptr::null(),
-                ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 CRYPTPROTECT_UI_FORBIDDEN,
                 &mut output,
             )
@@ -72,18 +103,21 @@ mod platform {
     pub fn unprotect(ciphertext: &[u8]) -> Result<(Vec<u8>, PayloadProtection), String> {
         let length = u32::try_from(ciphertext.len())
             .map_err(|_| "DPAPI ciphertext превышает максимально поддерживаемый размер.".to_string())?;
-        let input = CRYPT_INTEGER_BLOB {
-            cbData: length,
-            pbData: ciphertext.as_ptr() as *mut u8,
+        let input = DataBlob {
+            cb_data: length,
+            pb_data: ciphertext.as_ptr() as *mut u8,
         };
-        let mut output = CRYPT_INTEGER_BLOB::default();
+        let mut output = DataBlob {
+            cb_data: 0,
+            pb_data: ptr::null_mut(),
+        };
         let success = unsafe {
             CryptUnprotectData(
                 &input,
                 ptr::null_mut(),
                 ptr::null(),
-                ptr::null(),
-                ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 CRYPTPROTECT_UI_FORBIDDEN,
                 &mut output,
             )
@@ -97,18 +131,18 @@ mod platform {
         copy_and_free(output).map(|plaintext| (plaintext, PayloadProtection::DpapiCurrentUser))
     }
 
-    fn copy_and_free(output: CRYPT_INTEGER_BLOB) -> Result<Vec<u8>, String> {
-        if output.cbData > 0 && output.pbData.is_null() {
+    fn copy_and_free(output: DataBlob) -> Result<Vec<u8>, String> {
+        if output.cb_data > 0 && output.pb_data.is_null() {
             return Err("Windows DPAPI вернул пустой указатель для непустого payload.".to_string());
         }
-        let value = if output.cbData == 0 {
+        let value = if output.cb_data == 0 {
             Vec::new()
         } else {
-            unsafe { slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() }
+            unsafe { slice::from_raw_parts(output.pb_data, output.cb_data as usize).to_vec() }
         };
-        if !output.pbData.is_null() {
+        if !output.pb_data.is_null() {
             unsafe {
-                LocalFree(output.pbData.cast());
+                let _ = LocalFree(output.pb_data.cast());
             }
         }
         Ok(value)
