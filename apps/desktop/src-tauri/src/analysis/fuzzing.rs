@@ -172,8 +172,22 @@ fn has_double_extension(name: &str) -> bool {
     let final_extension = parts.last().copied().unwrap_or_default();
     matches!(
         final_extension,
-        "exe" | "dll" | "scr" | "com" | "bat" | "cmd" | "ps1" | "msi" | "js" | "jse"
-            | "vbs" | "vbe" | "wsf" | "hta" | "lnk" | "cpl"
+        "exe"
+            | "dll"
+            | "scr"
+            | "com"
+            | "bat"
+            | "cmd"
+            | "ps1"
+            | "msi"
+            | "js"
+            | "jse"
+            | "vbs"
+            | "vbe"
+            | "wsf"
+            | "hta"
+            | "lnk"
+            | "cpl"
     )
 }
 
