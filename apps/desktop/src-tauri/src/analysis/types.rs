@@ -224,7 +224,8 @@ impl AnalysisLimits {
 
         self.maximum_file_size_bytes = self.maximum_file_size_bytes.clamp(MIB, 4 * GIB);
         self.maximum_read_bytes = self.maximum_read_bytes.clamp(MIB, 4 * GIB);
-        self.maximum_parser_memory_bytes = self.maximum_parser_memory_bytes.clamp(8 * MIB, 512 * MIB);
+        self.maximum_parser_memory_bytes =
+            self.maximum_parser_memory_bytes.clamp(8 * MIB, 512 * MIB);
         self.job_timeout_ms = self.job_timeout_ms.clamp(5_000, 30 * 60 * 1_000);
         self.maximum_archive_entries = self.maximum_archive_entries.clamp(10, 100_000);
         self.maximum_archive_uncompressed_bytes = self
