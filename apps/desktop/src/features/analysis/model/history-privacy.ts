@@ -1,4 +1,3 @@
-
 import type { AnalysisReport } from './types';
 
 export interface HistoryPrivacyPolicy {
@@ -49,12 +48,14 @@ export function minimizeReportForFutureStorage(
   const target = isUrl
     ? redactUrlForHistory(report.target, policy)
     : minimizePathForHistory(report.target, policy.preserveFullPath);
+  const originalHeaders = report.url?.responseHeaders ?? [];
+  const filteredHeaders = filterHeadersForHistory(originalHeaders);
   const url = report.url
     ? {
         ...report.url,
         normalizedUrl: redactUrlForHistory(report.url.normalizedUrl, policy),
         finalUrl: report.url.finalUrl ? redactUrlForHistory(report.url.finalUrl, policy) : undefined,
-        responseHeaders: filterHeadersForHistory(report.url.responseHeaders),
+        responseHeaders: filteredHeaders,
       }
     : undefined;
   return {
@@ -67,6 +68,13 @@ export function minimizeReportForFutureStorage(
       fullPathPreserved: policy.preserveFullPath,
       urlQueryPreserved: policy.preserveUrlQuery,
       urlFragmentPreserved: policy.preserveUrlFragment,
+      privacyRedactions: {
+        credentialsRemovedFromUrls: isUrl || Boolean(report.url),
+        fullPathMinimized: !isUrl && !policy.preserveFullPath,
+        queryRemovedFromUrls: !policy.preserveUrlQuery,
+        fragmentRemovedFromUrls: !policy.preserveUrlFragment,
+        sensitiveResponseHeadersRemoved: originalHeaders.length - filteredHeaders.length,
+      },
     },
   };
 }
