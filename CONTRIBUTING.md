@@ -180,7 +180,33 @@ PR без подтверждения CLA может быть отклонён.
 
 Документация проекта, Issues, Pull Requests, коммиты и release notes ведутся на русском языке. Технические идентификаторы, имена API и общепринятые термины могут оставаться на английском.
 
-
 ## Fuzzing и private triage
 
-Fuzz corpus не должен содержать malware, active malicious URLs, secrets или пользовательские файлы. Быстрые property tests обязательны для security-sensitive изменений. Потенциальный security crash оформляется через Private Vulnerability Reporting; публичный Issue допускается только после устранения чувствительных деталей и оценки affected versions.
+Fuzz corpus не должен содержать malware, active malicious URLs, secrets или пользовательские файлы. Допустимы synthetic/random bytes, безопасные format-conformance fixtures с понятным происхождением и минимизированные невредоносные regression inputs.
+
+FileScope v0.4.0 поддерживает пять safe cargo-fuzz targets:
+
+- `report_deserialization`;
+- `passive_url`;
+- `rule_engine`;
+- `file_format_pe`;
+- `zip_metadata`.
+
+Fuzz entrypoints не выполняют сеть, процессы, анализируемые файлы или извлечение архивов на диск. PE и ZIP targets работают с ограниченными in-memory buffers.
+
+Для Pull Request используется быстрый bounded smoke — 20 секунд на target. Scheduled и ручной профиль — 600 секунд на target. Workflow дополнительно задаёт `-timeout=10`, RSS limit 1024 MiB и target-specific `-max_len`.
+
+Локальный короткий запуск отдельного target:
+
+```bash
+cd apps/desktop/src-tauri
+cargo install cargo-fuzz --version 0.13.2 --locked
+cargo fuzz run file_format_pe -- -max_total_time=20 -timeout=10 -max_len=4194304 -rss_limit_mb=1024
+cargo fuzz run zip_metadata -- -max_total_time=20 -timeout=10 -max_len=8388608 -rss_limit_mb=1024
+```
+
+Не заявляйте long fuzz как выполненный, если фактически запускался только PR smoke. Перед закрытием #49 нужен хотя бы один успешный scheduled/manual long run на актуальной release line.
+
+Потенциальный security crash не оформляется публичным Issue с exploit details. Используйте Private Vulnerability Reporting и процесс из `SECURITY.md`: минимизируйте input, проверьте отсутствие malware/секретов, определите affected versions, добавьте безопасный regression test и только после устранения чувствительных деталей обновляйте публичную документацию.
+
+Полная политика: `docs/security/fuzzing-policy.md`.
