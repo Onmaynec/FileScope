@@ -501,19 +501,31 @@ fn has_double_extension(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{fs::File, io::Write, path::PathBuf};
 
-    use tempfile::NamedTempFile;
+    use tempfile::TempDir;
     use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
     use super::*;
     use crate::analysis::jobs::JobRegistry;
     use crate::analysis::types::RiskLevel;
 
-    fn make_zip(entries: &[(&str, &[u8])]) -> NamedTempFile {
-        let file = NamedTempFile::new().unwrap();
+    struct ZipFixture {
+        _directory: TempDir,
+        path: PathBuf,
+    }
+
+    impl ZipFixture {
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    fn make_zip(entries: &[(&str, &[u8])]) -> ZipFixture {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("fixture.zip");
         {
-            let writer_file = file.reopen().unwrap();
+            let writer_file = File::create(&path).unwrap();
             let mut writer = ZipWriter::new(writer_file);
             let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
             for (name, contents) in entries {
@@ -522,7 +534,10 @@ mod tests {
             }
             writer.finish().unwrap();
         }
-        file
+        ZipFixture {
+            _directory: directory,
+            path,
+        }
     }
 
     #[test]
