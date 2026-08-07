@@ -4,16 +4,22 @@ import { join, relative } from 'node:path';
 const root = process.cwd();
 const required = [
   'apps/desktop/src/features/analysis/model/history-repository.ts',
+  'apps/desktop/src/features/analysis/model/tauri-history-repository.ts',
   'apps/desktop/src/features/analysis/model/report-migration.ts',
   'apps/desktop/src/features/analysis/model/history-privacy.ts',
+  'apps/desktop/src/features/analysis/ui/HistoryPrivacySettings.tsx',
   'apps/desktop/src/features/analysis/model/fixtures/history/future-report-schema.json',
+  'apps/desktop/src-tauri/src/history_storage.rs',
+  'apps/desktop/src-tauri/src/history_protection.rs',
   'apps/desktop/src-tauri/src/analysis/properties.rs',
   'apps/desktop/src-tauri/src/analysis/fuzzing.rs',
   'apps/desktop/src-tauri/fuzz/Cargo.toml',
   '.github/workflows/security-fuzz.yml',
   'docs/architecture/history-storage-migration-v040.md',
+  'docs/architecture/history-storage-protection-v040.md',
   'docs/security/fuzzing-policy.md',
   'docs/product/v0.3.4-manual-qa.md',
+  'docs/product/v0.4.0-manual-qa.md',
   'docs/product/v0.4.0-readiness-checklist.md',
 ];
 const errors = [];
@@ -48,6 +54,33 @@ if (existsSync(futureReportFixturePath)) {
   const future = JSON.parse(readFileSync(futureReportFixturePath, 'utf8'));
   if (future.storageVersion !== 1 || !(future.reportSchemaVersion > 1)) {
     errors.push('future-report-schema.json must keep current storageVersion with future reportSchemaVersion');
+  }
+}
+
+const protectionPath = join(root, 'apps/desktop/src-tauri/src/history_protection.rs');
+if (existsSync(protectionPath)) {
+  const protection = readFileSync(protectionPath, 'utf8');
+  for (const requiredLiteral of ['CryptProtectData', 'CryptUnprotectData', 'CRYPTPROTECT_UI_FORBIDDEN', 'FSDPAPI1', 'LocalFree']) {
+    if (!protection.includes(requiredLiteral)) errors.push(`history_protection.rs missing ${requiredLiteral}`);
+  }
+  if (/CRYPTPROTECT_LOCAL_MACHINE|LOCAL_MACHINE/.test(protection)) {
+    errors.push('history_protection.rs must stay current-user scoped; LOCAL_MACHINE is forbidden');
+  }
+}
+
+const historyStoragePath = join(root, 'apps/desktop/src-tauri/src/history_storage.rs');
+if (existsSync(historyStoragePath)) {
+  const storage = readFileSync(historyStoragePath, 'utf8');
+  for (const requiredLiteral of ['history_protection_status', 'protect_payload', 'unprotect_payload', 'LEGACY_GENERATION_SUFFIX', 'cleanup_plaintext_generations']) {
+    if (!storage.includes(requiredLiteral)) errors.push(`history_storage.rs missing ${requiredLiteral}`);
+  }
+}
+
+const historyRepositoryPath = join(root, 'apps/desktop/src/features/analysis/model/tauri-history-repository.ts');
+if (existsSync(historyRepositoryPath)) {
+  const repository = readFileSync(historyRepositoryPath, 'utf8');
+  for (const requiredLiteral of ['history_protection_status', 'history_rewrite_all', 'inspectTauriHistoryProtection']) {
+    if (!repository.includes(requiredLiteral)) errors.push(`tauri-history-repository.ts missing ${requiredLiteral}`);
   }
 }
 
