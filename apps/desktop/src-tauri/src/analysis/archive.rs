@@ -266,7 +266,10 @@ pub fn analyze_zip(
             "Заявленный распакованный объём превышает лимит анализа",
             vec![
                 format!("Объём: {total_uncompressed} байт"),
-                format!("Лимит анализа: {} байт", limits.maximum_archive_uncompressed_bytes),
+                format!(
+                    "Лимит анализа: {} байт",
+                    limits.maximum_archive_uncompressed_bytes
+                ),
             ],
         ));
     }
@@ -365,7 +368,9 @@ pub fn analyze_zip(
 
 fn hash_open_archive(file: &mut File, token: &JobToken) -> Result<String, AnalysisFailure> {
     file.seek(SeekFrom::Start(0)).map_err(|error| {
-        AnalysisFailure::io(format!("Не удалось начать хеширование ZIP-контейнера: {error}"))
+        AnalysisFailure::io(format!(
+            "Не удалось начать хеширование ZIP-контейнера: {error}"
+        ))
     })?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; 64 * 1024];
@@ -380,7 +385,9 @@ fn hash_open_archive(file: &mut File, token: &JobToken) -> Result<String, Analys
         hasher.update(&buffer[..read]);
     }
     file.seek(SeekFrom::Start(0)).map_err(|error| {
-        AnalysisFailure::io(format!("Не удалось вернуть ZIP к началу после SHA-256: {error}"))
+        AnalysisFailure::io(format!(
+            "Не удалось вернуть ZIP к началу после SHA-256: {error}"
+        ))
     })?;
     Ok(format!("{:x}", hasher.finalize()))
 }
@@ -590,13 +597,18 @@ mod tests {
             maximum_archive_entries: 1,
             ..AnalysisLimits::default()
         };
-        let report = analyze_zip(file.path().to_string_lossy().to_string(), limits, &token).unwrap();
-        assert_eq!(report.analysis_completeness, AnalysisCompleteness::StoppedByLimit);
+        let report =
+            analyze_zip(file.path().to_string_lossy().to_string(), limits, &token).unwrap();
+        assert_eq!(
+            report.analysis_completeness,
+            AnalysisCompleteness::StoppedByLimit
+        );
         assert_eq!(report.risk_score, 0);
         assert_eq!(report.risk_level, RiskLevel::NoThreatsFound);
-        assert!(report.indicators.iter().any(|item| {
-            item.id == "archive.entries.limit-exceeded" && item.score == 0
-        }));
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| { item.id == "archive.entries.limit-exceeded" && item.score == 0 }));
     }
 
     #[test]
