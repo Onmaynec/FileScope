@@ -13,9 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     analysis::{AnalysisReport, REPORT_SCHEMA_VERSION},
-    history_protection::{
-        is_dpapi_payload, protect_payload, unprotect_payload, PayloadProtection,
-    },
+    history_protection::{is_dpapi_payload, protect_payload, unprotect_payload, PayloadProtection},
 };
 
 pub const HISTORY_STORAGE_VERSION: u16 = 2;
@@ -821,8 +819,7 @@ fn is_generation_file(path: &Path) -> bool {
         .and_then(|name| name.to_str())
         .is_some_and(|name| {
             name.starts_with(GENERATION_PREFIX)
-                && (name.ends_with(GENERATION_SUFFIX)
-                    || name.ends_with(LEGACY_GENERATION_SUFFIX))
+                && (name.ends_with(GENERATION_SUFFIX) || name.ends_with(LEGACY_GENERATION_SUFFIX))
         })
 }
 
