@@ -268,7 +268,10 @@ mod tests {
             "hostname",
             IndicatorSeverity::Medium,
             16,
-            vec!["Поддоменов: 5".to_string(), "Registrable domain: example.co.uk".to_string()],
+            vec![
+                "Поддоменов: 5".to_string(),
+                "Registrable domain: example.co.uk".to_string(),
+            ],
             "review",
         );
         assert_eq!(value.category, "analysis-status");
