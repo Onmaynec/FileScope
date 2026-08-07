@@ -1,0 +1,13 @@
+[
+  {
+    "id": "legacy",
+    "objectKind": "file",
+    "target": "C:/legacy.exe",
+    "displayName": "legacy.exe",
+    "riskLevel": "caution",
+    "riskScore": 12,
+    "indicators": [],
+    "metadata": {},
+    "limitations": []
+  }
+]

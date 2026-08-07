@@ -97,6 +97,7 @@ export interface ArchiveAnalysis {
   totalUncompressedSize: number;
   maximumDepth: number;
   compressionRatio: number;
+  compressionRatioInfinite?: boolean;
   nestedArchives: number;
   executableEntries: number;
   suspiciousPaths: number;

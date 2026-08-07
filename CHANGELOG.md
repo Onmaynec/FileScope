@@ -4,6 +4,25 @@
 
 ## [Не выпущено]
 
+## [0.3.4] — в разработке
+
+### Добавлено
+
+- асинхронная граница `ReportHistoryRepository` и versioned storage envelope v1;
+- migration fixtures, privacy helpers и readiness preflight для v0.4.0;
+- быстрые property tests и bounded fuzz targets без malware samples;
+- read-only scheduled/manual fuzz workflow с коротким retention.
+
+### Изменено
+
+- UI истории больше не зависит от синхронного прямого доступа к report keys;
+- накопление risk score защищено от переполнения на больших synthetic inputs;
+- GitHub Actions подготовлены к Node.js 24 runtime.
+
+### Важно
+
+- v0.3.4 остаётся совместимым readiness-релизом: Tauri/DPAPI storage и privacy settings входят в v0.4.0.
+
 ## [0.3.3] — 2026-08-06
 
 ### Исправлено

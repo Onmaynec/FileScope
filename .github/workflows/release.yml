@@ -27,7 +27,7 @@ concurrency:
 jobs:
   validate:
     name: Проверить версию, код и release notes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     outputs:
       version: ${{ steps.release.outputs.version }}
@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -117,19 +117,12 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-
           root_version="$(node -p "require('./package.json').version")"
           desktop_version="$(node -p "require('./apps/desktop/package.json').version")"
           contracts_version="$(node -p "require('./packages/contracts/package.json').version")"
           tauri_version="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
           cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' apps/desktop/src-tauri/Cargo.toml | head -n 1)"
-
-          for pair in \
-            "root package.json:$root_version" \
-            "desktop package.json:$desktop_version" \
-            "contracts package.json:$contracts_version" \
-            "tauri.conf.json:$tauri_version" \
-            "Cargo.toml:$cargo_version"; do
+          for pair in "root package.json:$root_version" "desktop package.json:$desktop_version" "contracts package.json:$contracts_version" "tauri.conf.json:$tauri_version" "Cargo.toml:$cargo_version"; do
             name="${pair%%:*}"
             actual="${pair#*:}"
             if [[ "$actual" != "$VERSION" ]]; then
@@ -145,24 +138,21 @@ jobs:
         run: |
           set -euo pipefail
           notes="docs/releases/v${VERSION}.md"
-
           if [[ ! -s "$notes" ]]; then
             echo "::error file=$notes::Добавьте русские release notes перед публикацией."
             exit 1
           fi
-
           if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
             echo "::error::Тег v${VERSION} уже существует. Опубликованные версии нельзя перезаписывать."
             exit 1
           fi
-
           grep -Fq "## [${VERSION}]" CHANGELOG.md || {
             echo "::error file=CHANGELOG.md::Не найдена секция ## [${VERSION}]."
             exit 1
           }
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
 
@@ -175,6 +165,9 @@ jobs:
       - name: Проверить неизменность pnpm-lock.yaml
         run: git diff --exit-code -- pnpm-lock.yaml
 
+      - name: Выполнить release preflight
+        run: pnpm release:preflight
+
       - name: Проверить синтаксис doctor
         run: node --check scripts/doctor.mjs
 
@@ -184,8 +177,10 @@ jobs:
       - name: Проверить TypeScript
         run: pnpm --filter @filescope/desktop typecheck
 
-      - name: Запустить unit-тесты
-        run: pnpm --filter @filescope/desktop test
+      - name: Запустить unit и property-тесты
+        run: |
+          pnpm --filter @filescope/desktop test
+          pnpm --filter @filescope/desktop test:properties
 
       - name: Собрать frontend
         run: pnpm --filter @filescope/desktop build
@@ -203,10 +198,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
 
@@ -214,8 +209,9 @@ jobs:
         run: npm install --global pnpm@10.14.0
 
       - name: Установить Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # pinned revision
         with:
+          toolchain: stable
           components: rustfmt
 
       - name: Установить фиксированные зависимости
@@ -223,6 +219,9 @@ jobs:
 
       - name: Проверить неизменность pnpm-lock.yaml
         run: git diff --exit-code -- pnpm-lock.yaml
+
+      - name: Проверить readiness к v0.4.0
+        run: pnpm check:v040-readiness
 
       - name: Проверить форматирование Rust
         working-directory: apps/desktop/src-tauri
@@ -243,7 +242,7 @@ jobs:
         run: git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
 
       - name: Сохранить проверенную сборку
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FileScope-${{ needs.validate.outputs.version }}-Windows-x64
           path: |
@@ -257,19 +256,19 @@ jobs:
     needs:
       - validate
       - build-windows
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
     permissions:
       contents: write
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Скачать проверенную сборку
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: FileScope-${{ needs.validate.outputs.version }}-Windows-x64
           path: release-artifact
@@ -280,19 +279,13 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
-
           setup_path="$(find release-artifact -type f -iname '*setup.exe' | head -n 1)"
           portable_path="$(find release-artifact -type f -iname 'filescope.exe' | head -n 1)"
-
           test -n "$setup_path" && test -f "$setup_path"
           test -n "$portable_path" && test -f "$portable_path"
-
           cp "$setup_path" "FileScope_${VERSION}_x64-setup.exe"
           cp "$portable_path" "FileScope_${VERSION}_x64-portable.exe"
-          sha256sum \
-            "FileScope_${VERSION}_x64-setup.exe" \
-            "FileScope_${VERSION}_x64-portable.exe" \
-            > SHA256SUMS.txt
+          sha256sum "FileScope_${VERSION}_x64-setup.exe" "FileScope_${VERSION}_x64-portable.exe" > SHA256SUMS.txt
 
       - name: Создать защищённый тег
         shell: bash
@@ -313,14 +306,8 @@ jobs:
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: |
           set -euo pipefail
-
           flags=(--repo '${{ github.repository }}' --verify-tag --title "FileScope v${VERSION}" --notes-file "docs/releases/v${VERSION}.md")
-          if [[ "$PRERELEASE" == 'true' ]]; then
-            flags+=(--prerelease)
-          else
-            flags+=(--latest)
-          fi
-
+          if [[ "$PRERELEASE" == 'true' ]]; then flags+=(--prerelease); else flags+=(--latest); fi
           gh release create "v${VERSION}" "${flags[@]}" \
             "FileScope_${VERSION}_x64-setup.exe" \
             "FileScope_${VERSION}_x64-portable.exe" \

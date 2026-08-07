@@ -1,0 +1,34 @@
+
+[package]
+name = "filescope-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+filescope_lib = { package = "filescope", path = "..", features = ["fuzzing"] }
+
+[[bin]]
+name = "report_deserialization"
+path = "fuzz_targets/report_deserialization.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "passive_url"
+path = "fuzz_targets/passive_url.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rule_engine"
+path = "fuzz_targets/rule_engine.rs"
+test = false
+doc = false
+bench = false

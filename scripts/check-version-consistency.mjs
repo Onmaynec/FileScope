@@ -85,8 +85,14 @@ for (const [rustName, tsName] of reportFields) {
 const rustSchema = Number(rustTypes.match(/REPORT_SCHEMA_VERSION:\s*u16\s*=\s*(\d+)/)?.[1]);
 const frontendSchema = Number(frontendTypes.match(/currentReportSchemaVersion\s*=\s*(\d+)/)?.[1]);
 const sharedSchema = Number(sharedContracts.match(/FILESCOPE_REPORT_SCHEMA_VERSION\s*=\s*(\d+)/)?.[1]);
+const frontendStorage = read('apps/desktop/src/features/analysis/model/history-repository.ts');
+const frontendStorageVersion = Number(frontendStorage.match(/HISTORY_STORAGE_VERSION\s*=\s*(\d+)/)?.[1]);
+const sharedStorageVersion = Number(sharedContracts.match(/FILESCOPE_HISTORY_STORAGE_VERSION\s*=\s*(\d+)/)?.[1]);
 if (!rustSchema || rustSchema !== frontendSchema || rustSchema !== sharedSchema) {
   contractErrors.push(`Schema mismatch: Rust=${rustSchema}, frontend=${frontendSchema}, contracts=${sharedSchema}`);
+}
+if (!frontendStorageVersion || frontendStorageVersion !== sharedStorageVersion) {
+  contractErrors.push(`History storage mismatch: frontend=${frontendStorageVersion}, contracts=${sharedStorageVersion}`);
 }
 if (contractErrors.length) {
   console.error('Report contract consistency failed:');

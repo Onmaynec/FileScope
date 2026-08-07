@@ -1,6 +1,10 @@
 mod archive;
 mod file;
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 mod jobs;
+#[cfg(test)]
+mod properties;
 mod rules;
 mod types;
 mod url;
@@ -30,18 +34,22 @@ pub async fn analyze_local_file(
     limits: Option<AnalysisLimits>,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let limits = limits.unwrap_or_default();
+    let limits = limits.unwrap_or_default().validated()?;
+    let applied_limits = limits.clone();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let joined =
         tauri::async_runtime::spawn_blocking(move || file::analyze_file(path, limits, &token))
             .await;
     registry.finish(&job_id);
-    joined.map_err(|error| {
+    let mut report = joined.map_err(|error| {
         AnalysisFailure::new(
             jobs::AnalysisFailureCode::Internal,
             format!("Фоновое файловое задание завершилось аварийно: {error}"),
         )
-    })?
+    })??;
+    normalize_file_report_coverage(&mut report);
+    attach_applied_limits(&mut report, &applied_limits);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -51,18 +59,21 @@ pub async fn analyze_local_archive(
     limits: Option<AnalysisLimits>,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let limits = limits.unwrap_or_default();
+    let limits = limits.unwrap_or_default().validated()?;
+    let applied_limits = limits.clone();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let joined =
         tauri::async_runtime::spawn_blocking(move || archive::analyze_zip(path, limits, &token))
             .await;
     registry.finish(&job_id);
-    joined.map_err(|error| {
+    let mut report = joined.map_err(|error| {
         AnalysisFailure::new(
             jobs::AnalysisFailureCode::Internal,
             format!("Фоновое архивное задание завершилось аварийно: {error}"),
         )
-    })?
+    })??;
+    attach_applied_limits(&mut report, &applied_limits);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -71,7 +82,8 @@ pub fn analyze_url_passive(
     url: String,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let token = registry.start(&job_id, AnalysisLimits::default().job_timeout_ms)?;
+    let timeout_ms = AnalysisLimits::default().validated()?.job_timeout_ms;
+    let token = registry.start(&job_id, timeout_ms)?;
     let result = url::analyze_url_passive(url, &token);
     registry.finish(&job_id);
     result
@@ -84,11 +96,14 @@ pub async fn analyze_url_active(
     limits: Option<AnalysisLimits>,
     registry: State<'_, JobRegistry>,
 ) -> Result<AnalysisReport, AnalysisFailure> {
-    let limits = limits.unwrap_or_default();
+    let limits = limits.unwrap_or_default().validated()?;
+    let applied_limits = limits.clone();
     let token = registry.start(&job_id, limits.job_timeout_ms)?;
     let result = url::analyze_url_active(url, limits, &token).await;
     registry.finish(&job_id);
-    result
+    let mut report = result?;
+    attach_applied_limits(&mut report, &applied_limits);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -113,6 +128,69 @@ pub fn get_analysis_metadata() -> Value {
         "analyzerVersion": types::ANALYZER_VERSION,
         "ruleSetVersion": types::RULE_SET_VERSION,
     })
+}
+
+fn normalize_file_report_coverage(report: &mut AnalysisReport) {
+    if report.analysis_completeness != types::AnalysisCompleteness::Complete {
+        return;
+    }
+    let Some(size) = report.size_bytes else {
+        return;
+    };
+    let buffered = report
+        .metadata
+        .get("bytesBufferedForParser")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let inspected = buffered.min(1024 * 1024);
+    if let Some(metadata) = report.metadata.as_object_mut() {
+        metadata.insert("bytesInspected".to_string(), json!(inspected));
+    }
+
+    let generic_zip = report.detected_type.as_deref() == Some("ZIP archive");
+    let prefix_only_non_pe =
+        report.detected_type.as_deref() != Some("Windows PE") && size > inspected;
+    if !generic_zip && !prefix_only_non_pe {
+        return;
+    }
+
+    report.analysis_completeness = types::AnalysisCompleteness::Partial;
+    if let Some(metadata) = report.metadata.as_object_mut() {
+        metadata.insert(
+            "coverageMode".to_string(),
+            json!(if generic_zip {
+                "generic-zip-prefix-only"
+            } else {
+                "prefix-only"
+            }),
+        );
+    }
+    let limitation = if generic_zip {
+        "ZIP распознан в режиме обычного файла: рассчитан SHA-256 и проверены общие признаки, но central directory и записи архива не разбирались. Используйте режим ZIP-архива для структурной проверки."
+    } else {
+        "Для этого формата контентные эвристики проверили только начальный участок файла; SHA-256 рассчитан по всему открытому объекту."
+    };
+    if !report.limitations.iter().any(|item| item == limitation) {
+        report.limitations.push(limitation.to_string());
+    }
+}
+
+fn attach_applied_limits(report: &mut AnalysisReport, limits: &AnalysisLimits) {
+    let applied = json!({
+        "maximumFileSizeBytes": limits.maximum_file_size_bytes,
+        "maximumReadBytes": limits.maximum_read_bytes,
+        "maximumParserMemoryBytes": limits.maximum_parser_memory_bytes,
+        "jobTimeoutMs": limits.job_timeout_ms,
+        "maximumArchiveEntries": limits.maximum_archive_entries,
+        "maximumArchiveUncompressedBytes": limits.maximum_archive_uncompressed_bytes,
+        "maximumArchiveDepth": limits.maximum_archive_depth,
+        "maximumCompressionRatio": limits.maximum_compression_ratio,
+        "activeUrlTimeoutMs": limits.active_url_timeout_ms,
+        "activeUrlRedirectLimit": limits.active_url_redirect_limit,
+    });
+    if let Some(metadata) = report.metadata.as_object_mut() {
+        metadata.insert("appliedLimits".to_string(), applied);
+    }
 }
 
 fn inspect_local_path(path: String, archive_only: bool) -> LocalObjectCandidate {

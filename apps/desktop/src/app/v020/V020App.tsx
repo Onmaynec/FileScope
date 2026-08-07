@@ -117,7 +117,16 @@ function AnalysisPage({ mode, path, limits, onReport }: { mode: ObjectKind; path
 }
 
 function HomePage({ navigate, chooseFile }: { navigate: (page: Page) => void; chooseFile: () => Promise<void> }) {
-  const reportCount = loadReports().length;
+  const [reportCount, setReportCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void loadReports().then((reports) => {
+      if (active) setReportCount(reports.length);
+    });
+    return () => { active = false; };
+  }, []);
+
   return <>
     <section className="v020-hero"><div><span className="analysis-kicker">FileScope Core v{APP_VERSION}</span><h1>Реальный анализ до запуска</h1><p>Вычисляйте SHA-256, проверяйте типы файлов, PE-структуру, URL и ZIP-архивы локально. Исследуемые объекты не запускаются и не отправляются наружу.</p><div className="button-row"><button className="button button-primary" onClick={() => void chooseFile()}><Upload />Выбрать файл</button><button className="button button-secondary" onClick={() => navigate('links')}><Globe2 />Проверить URL</button></div></div><div className="v020-hero__shield"><ShieldCheck /><span>Local-first</span><strong>0 внешних загрузок файлов</strong></div></section>
     <section className="quick-grid"><button className="action-card" onClick={() => navigate('files')}><FileSearch /><strong>Файлы</strong><span>Атомарный SHA-256, сигнатуры, PE и энтропия.</span></button><button className="action-card" onClick={() => navigate('links')}><Globe2 /><strong>URL</strong><span>Канонический Rust-разбор и защищённая ручная сеть.</span></button><button className="action-card" onClick={() => navigate('archives')}><Archive /><strong>ZIP-архивы</strong><span>Пути, глубина, степень сжатия и вложенные объекты.</span></button><button className="action-card" onClick={() => navigate('reports')}><BarChart3 /><strong>Отчёты</strong><span>{reportCount ? `Сохранено локально: ${reportCount}` : 'История пока пуста.'}</span></button></section>

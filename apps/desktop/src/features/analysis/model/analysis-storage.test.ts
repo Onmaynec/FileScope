@@ -1,28 +1,22 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearReports, migrateReport, sanitizeLimits } from './analysis-storage';
-import { currentReportSchemaVersion, defaultAnalysisLimits } from './types';
+import {
+  clearReportHistory,
+  clearReports,
+  deleteReport,
+  loadReportHistory,
+  saveReport,
+  sanitizeLimits,
+} from './analysis-storage';
+import {
+  HISTORY_MIGRATION_BACKUP_KEY,
+  HISTORY_STORAGE_KEY,
+  HISTORY_STORAGE_VERSION,
+  LEGACY_HISTORY_MIGRATION_BACKUP_KEYS,
+} from './history-repository';
+import { migrateReport } from './report-migration';
+import { currentReportSchemaVersion, defaultAnalysisLimits, type AnalysisReport } from './types';
 
-beforeEach(() => {
-  const values = new Map<string, string>();
-  const storage: Storage = {
-    get length() {
-      return values.size;
-    },
-    clear: () => values.clear(),
-    getItem: (key) => values.get(key) ?? null,
-    key: (index) => [...values.keys()][index] ?? null,
-    removeItem: (key) => {
-      values.delete(key);
-    },
-    setItem: (key, value) => {
-      values.set(key, value);
-    },
-  };
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: storage,
-  });
-});
+beforeEach(() => installMemoryStorage());
 
 describe('лимиты анализа', () => {
   it('не позволяет полностью отключить защитные ограничения', () => {
@@ -50,51 +44,146 @@ describe('лимиты анализа', () => {
   });
 });
 
-describe('очистка истории', () => {
-  it('удаляет current и legacy отчёты, сохраняя backup и настройки', () => {
-    localStorage.setItem('filescope:reports:schema-1', '[{"id":"current"}]');
+describe('versioned history repository', () => {
+  it('переносит raw schema-v1 array в storage envelope и сохраняет исходный ключ', async () => {
+    localStorage.setItem(`filescope:reports:schema-${currentReportSchemaVersion}`, JSON.stringify([sampleReport('current')]));
+    const snapshot = await loadReportHistory();
+    expect(snapshot.status).toBe('ready');
+    expect(snapshot.reports).toHaveLength(1);
+    expect(localStorage.getItem(`filescope:reports:schema-${currentReportSchemaVersion}`)).not.toBeNull();
+    const envelope = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
+    expect(envelope.storageVersion).toBe(HISTORY_STORAGE_VERSION);
+    expect(localStorage.getItem(HISTORY_MIGRATION_BACKUP_KEY)).toContain(`filescope:reports:schema-${currentReportSchemaVersion}`);
+  });
+
+  it('не перезаписывает future storage envelope', async () => {
+    const raw = JSON.stringify({ storageVersion: 99, reportSchemaVersion: 99, reports: [] });
+    localStorage.setItem(HISTORY_STORAGE_KEY, raw);
+    const snapshot = await loadReportHistory();
+    expect(snapshot.status).toBe('unsupported');
+    expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBe(raw);
+  });
+
+  it('не перезаписывает current storage envelope с future report schema', async () => {
+    const raw = JSON.stringify({
+      storageVersion: HISTORY_STORAGE_VERSION,
+      reportSchemaVersion: currentReportSchemaVersion + 1,
+      savedAt: '2026-08-07T00:00:00Z',
+      reports: [{ schemaVersion: currentReportSchemaVersion + 1, id: 'future' }],
+    });
+    localStorage.setItem(HISTORY_STORAGE_KEY, raw);
+    const snapshot = await loadReportHistory();
+    expect(snapshot.status).toBe('unsupported');
+    await saveReport(sampleReport('new'));
+    expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBe(raw);
+  });
+
+  it('не доверяет envelope, если внутри скрыт future report schema', async () => {
+    const raw = JSON.stringify({
+      storageVersion: HISTORY_STORAGE_VERSION,
+      reportSchemaVersion: currentReportSchemaVersion,
+      savedAt: '2026-08-07T00:00:00Z',
+      reports: [{ schemaVersion: currentReportSchemaVersion + 5, id: 'future-hidden' }],
+    });
+    localStorage.setItem(HISTORY_STORAGE_KEY, raw);
+    expect((await loadReportHistory()).status).toBe('unsupported');
+    expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBe(raw);
+  });
+
+  it('не перезаписывает повреждённую историю', async () => {
+    localStorage.setItem(HISTORY_STORAGE_KEY, '{broken');
+    const snapshot = await loadReportHistory();
+    expect(snapshot.status).toBe('corrupted');
+    expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBe('{broken');
+  });
+
+  it('ошибку чтения storage не интерпретирует как пустую историю', async () => {
+    installMemoryStorage({ failGetKeys: new Set([HISTORY_STORAGE_KEY]) });
+    const snapshot = await loadReportHistory();
+    expect(snapshot.status).toBe('unavailable');
+    expect(snapshot.persisted).toBe(false);
+  });
+
+  it('сохраняет уникальные отчёты, удаляет один и полностью очищает только report payload', async () => {
+    await saveReport(sampleReport('a'));
+    await saveReport(sampleReport('a'));
+    await saveReport(sampleReport('b'));
+    expect((await loadReportHistory()).reports.map((item) => item.id)).toEqual(['b', 'a']);
+    expect((await deleteReport('a')).map((item) => item.id)).toEqual(['b']);
+
     localStorage.setItem('filescope:v0.2.0:reports', '[{"id":"legacy"}]');
-    localStorage.setItem('filescope:migration-backup:v0.3.3', '{"legacy":"backup"}');
+    localStorage.setItem(HISTORY_MIGRATION_BACKUP_KEY, '{"reports":"backup"}');
+    const legacyBackupKey = LEGACY_HISTORY_MIGRATION_BACKUP_KEYS[0];
+    localStorage.setItem(legacyBackupKey, JSON.stringify({
+      'filescope:v0.2.0:reports': '[{"id":"legacy-backup"}]',
+      'filescope:v0.2.0:limits': '{"jobTimeoutMs":15000}',
+    }));
     localStorage.setItem('filescope:limits:v1', '{"jobTimeoutMs":30000}');
 
-    expect(clearReports()).toEqual([]);
-    expect(localStorage.getItem('filescope:reports:schema-1')).toBeNull();
+    expect(await clearReports()).toEqual([]);
+    expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem('filescope:v0.2.0:reports')).toBeNull();
-    expect(localStorage.getItem('filescope:migration-backup:v0.3.3')).toBe('{"legacy":"backup"}');
+    expect(localStorage.getItem(HISTORY_MIGRATION_BACKUP_KEY)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(legacyBackupKey) ?? '{}')).toEqual({
+      'filescope:v0.2.0:limits': '{"jobTimeoutMs":15000}',
+    });
+    expect(localStorage.getItem(legacyBackupKey)).not.toContain('legacy-backup');
     expect(localStorage.getItem('filescope:limits:v1')).toBe('{"jobTimeoutMs":30000}');
+  });
+
+  it('не сообщает об успешной очистке, если removeItem не сработал', async () => {
+    const values = new Map<string, string>([[HISTORY_STORAGE_KEY, JSON.stringify({
+      storageVersion: HISTORY_STORAGE_VERSION,
+      reportSchemaVersion: currentReportSchemaVersion,
+      savedAt: '2026-08-07T00:00:00Z',
+      reports: [sampleReport('blocked')],
+    })]]);
+    installMemoryStorage({ values, failRemoveKeys: new Set([HISTORY_STORAGE_KEY]) });
+    const snapshot = await clearReportHistory();
+    expect(snapshot.status).toBe('unavailable');
+    expect(snapshot.persisted).toBe(false);
+    expect(localStorage.getItem(HISTORY_STORAGE_KEY)).not.toBeNull();
   });
 });
 
 describe('миграция отчётов', () => {
   it('переносит legacy-отчёт без потери индикаторов', () => {
     const migrated = migrateReport({
-      id: 'legacy-1',
-      objectKind: 'file',
-      target: 'C:/sample.exe',
-      displayName: 'sample.exe',
-      startedAt: '2026-08-01T00:00:00Z',
-      completedAt: '2026-08-01T00:00:01Z',
-      durationMs: 1000,
-      riskLevel: 'caution',
-      riskScore: 12,
+      ...sampleReport('legacy-1'),
+      schemaVersion: undefined,
+      appVersion: undefined,
+      createdBy: undefined,
       indicators: [{
-        id: 'legacy.indicator',
-        title: 'Legacy',
-        description: 'Legacy indicator',
-        category: 'legacy',
-        severity: 'low',
-        score: 12,
-        evidence: ['evidence'],
-        recommendation: 'review',
+        id: 'legacy.indicator', title: 'Legacy', description: 'Legacy indicator',
+        category: 'legacy', severity: 'low', score: 12, evidence: ['evidence'], recommendation: 'review',
       }],
-      metadata: {},
-      isDemo: false,
-      limitations: ['legacy limitation'],
     });
     expect(migrated.schemaVersion).toBe(currentReportSchemaVersion);
     expect(migrated.indicators).toHaveLength(1);
     expect(migrated.metadata.migratedFromSchema).toBe(0);
     expect(migrated.createdBy.runtime).toBe('legacy-storage');
+  });
+
+  it('нормализует legacy null compressionRatio в явное infinite-состояние', () => {
+    const migrated = migrateReport({
+      ...sampleReport('legacy-zip'),
+      objectKind: 'archive',
+      archive: {
+        format: 'ZIP',
+        entries: [],
+        totalEntries: 1,
+        totalCompressedSize: 0,
+        totalUncompressedSize: 10,
+        maximumDepth: 1,
+        compressionRatio: null,
+        nestedArchives: 0,
+        executableEntries: 0,
+        suspiciousPaths: 0,
+      },
+    });
+    expect(migrated.archive?.compressionRatio).toBe(0);
+    expect(migrated.archive?.compressionRatioInfinite).toBe(true);
+    expect(JSON.stringify(migrated)).not.toContain('"compressionRatio":null');
   });
 
   it('открывает будущую schema только в безопасном read-only режиме', () => {
@@ -104,3 +193,41 @@ describe('миграция отчётов', () => {
     expect(migrated.limitations[0]).toContain('новее поддерживаемой');
   });
 });
+
+function sampleReport(id: string): AnalysisReport {
+  return {
+    schemaVersion: currentReportSchemaVersion,
+    appVersion: '0.3.4', analyzerVersion: 'test', ruleSetVersion: 'test',
+    createdBy: { platform: 'test', architecture: 'test', runtime: 'test' },
+    analysisCompleteness: 'complete', id, objectKind: 'file', target: `C:/${id}.exe`,
+    displayName: `${id}.exe`, startedAt: '2026-08-01T00:00:00Z',
+    completedAt: '2026-08-01T00:00:01Z', durationMs: 1000,
+    riskLevel: 'noThreatsFound', riskScore: 0, indicators: [], metadata: {},
+    isDemo: false, limitations: [],
+  };
+}
+
+interface MemoryStorageOptions {
+  values?: Map<string, string>;
+  failGetKeys?: Set<string>;
+  failRemoveKeys?: Set<string>;
+}
+
+function installMemoryStorage(options: MemoryStorageOptions = {}): void {
+  const values = options.values ?? new Map<string, string>();
+  const storage: Storage = {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => {
+      if (options.failGetKeys?.has(key)) throw new Error('getItem blocked');
+      return values.get(key) ?? null;
+    },
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => {
+      if (options.failRemoveKeys?.has(key)) return;
+      values.delete(key);
+    },
+    setItem: (key, value) => { values.set(key, value); },
+  };
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
+}

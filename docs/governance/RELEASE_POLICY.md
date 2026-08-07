@@ -41,6 +41,18 @@ Hotfix создаётся от `main`, проверяется через PR и �
 - подтверждение версии во frontend, Cargo и Tauri-конфигурации;
 - отсутствие незаполненных policy-маркеров и секретов.
 
+## Supply-chain правила GitHub Actions
+
+- каждый внешний `uses:` в `.github/workflows` закрепляется по полному 40-символьному commit SHA;
+- рядом с SHA сохраняется читаемый комментарий версии/назначения, если upstream предоставляет release tag;
+- `@main`, `@master`, `@stable`, `@nightly`, `@vN` и другие перемещаемые refs запрещены для внешних actions;
+- выбор нового SHA проходит review upstream release/commit, publisher и требуемых permissions;
+- GitHub Actions обновляются через Dependabot PR, после чего новый SHA проверяется Policy Pack и обычным CI;
+- локальные actions (`./...`) могут использовать локальный путь и контролируются commit самого FileScope;
+- release job не получает секреты или permissions шире необходимых конкретному шагу.
+
+Policy Pack и `check:v040-readiness` отклоняют появление внешнего action без immutable SHA.
+
 ## Запуск публикации
 
 Публикация выполняется универсальным workflow `.github/workflows/release.yml` одним из двух способов:
