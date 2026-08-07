@@ -1,5 +1,7 @@
 mod analysis;
 #[cfg(not(feature = "fuzzing"))]
+mod history_storage;
+#[cfg(not(feature = "fuzzing"))]
 mod window_lifecycle;
 
 #[cfg(feature = "fuzzing")]
@@ -35,6 +37,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(WindowLifecycleState::default())
         .manage(analysis::JobRegistry::default())
+        .manage(history_storage::HistoryStorageState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -46,6 +49,12 @@ pub fn run() {
             analysis::cancel_analysis,
             analysis::inspect_local_paths,
             analysis::get_analysis_metadata,
+            history_storage::history_load,
+            history_storage::history_inspect,
+            history_storage::history_save_report,
+            history_storage::history_replace_all,
+            history_storage::history_delete_report,
+            history_storage::history_clear,
             set_close_behavior,
         ])
         .on_window_event(|window, event| {
