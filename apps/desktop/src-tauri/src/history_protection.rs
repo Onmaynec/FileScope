@@ -65,8 +65,9 @@ mod platform {
     }
 
     pub fn protect(raw: &[u8]) -> Result<(Vec<u8>, PayloadProtection), String> {
-        let length = u32::try_from(raw.len())
-            .map_err(|_| "DPAPI payload превышает максимально поддерживаемый размер.".to_string())?;
+        let length = u32::try_from(raw.len()).map_err(|_| {
+            "DPAPI payload превышает максимально поддерживаемый размер.".to_string()
+        })?;
         let input = DataBlob {
             cb_data: length,
             pb_data: raw.as_ptr() as *mut u8,
@@ -101,8 +102,9 @@ mod platform {
     }
 
     pub fn unprotect(ciphertext: &[u8]) -> Result<(Vec<u8>, PayloadProtection), String> {
-        let length = u32::try_from(ciphertext.len())
-            .map_err(|_| "DPAPI ciphertext превышает максимально поддерживаемый размер.".to_string())?;
+        let length = u32::try_from(ciphertext.len()).map_err(|_| {
+            "DPAPI ciphertext превышает максимально поддерживаемый размер.".to_string()
+        })?;
         let input = DataBlob {
             cb_data: length,
             pb_data: ciphertext.as_ptr() as *mut u8,
