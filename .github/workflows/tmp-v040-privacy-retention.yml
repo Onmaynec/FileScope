@@ -1,0 +1,66 @@
+name: Temporary v0.4.0 privacy-retention Rust patch
+
+on:
+  push:
+    branches:
+      - tmp/v040-lock-refresh
+
+permissions:
+  contents: write
+
+jobs:
+  patch-rust:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Получить временную ветку
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: tmp/v040-lock-refresh
+          fetch-depth: 0
+
+      - name: Добавить безопасный rewrite history policy
+        shell: python
+        run: |
+          from pathlib import Path
+
+          history = Path('apps/desktop/src-tauri/src/history_storage.rs')
+          text = history.read_text(encoding='utf-8')
+          marker = '''    fn delete_report(&self, id: &str) -> HistoryStorageSnapshot {\n'''
+          rewrite = '''    fn rewrite_all(&self, reports: Vec<AnalysisReport>) -> HistoryStorageSnapshot {\n        let current = self.load();\n        if !can_mutate(current.status) {\n            return current;\n        }\n        if reports\n            .iter()\n            .any(|report| report.schema_version != REPORT_SCHEMA_VERSION)\n        {\n            return unsupported(format!(\n                "Policy rewrite содержит отчёт неподдерживаемой schemaVersion; ожидается {}.",\n                REPORT_SCHEMA_VERSION\n            ));\n        }\n        self.publish(reports.into_iter().take(MAXIMUM_REPORTS).collect())\n    }\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit('delete_report marker mismatch')
+          text = text.replace(marker, rewrite + marker)
+
+          command_marker = '''#[tauri::command]\npub fn history_delete_report(\n'''
+          command = '''#[tauri::command]\npub fn history_rewrite_all(\n    app: AppHandle,\n    state: State<'_, HistoryStorageState>,\n    reports: Vec<AnalysisReport>,\n) -> HistoryStorageSnapshot {\n    with_store(&app, &state, |store| store.rewrite_all(reports))\n}\n\n'''
+          if text.count(command_marker) != 1:
+              raise SystemExit('history_delete_report marker mismatch')
+          text = text.replace(command_marker, command + command_marker)
+
+          test_marker = '''    #[test]\n    fn clear_removes_generations_and_temp_files() {\n'''
+          test = '''    #[test]\n    fn rewrite_all_updates_existing_safe_store_for_policy_enforcement() {\n        let temp = TempDir::new().unwrap();\n        let store = HistoryStore::new(temp.path().join("history"));\n        store.save_report(sample_report("one"));\n        store.save_report(sample_report("two"));\n        let rewritten = store.rewrite_all(vec![sample_report("two")]);\n        assert_eq!(rewritten.status, HistoryStorageStatus::Ready);\n        assert!(rewritten.persisted);\n        assert_eq!(rewritten.reports.len(), 1);\n        assert_eq!(rewritten.reports[0].id, "two");\n    }\n\n'''
+          if text.count(test_marker) != 1:
+              raise SystemExit('clear test marker mismatch')
+          text = text.replace(test_marker, test + test_marker)
+          history.write_text(text, encoding='utf-8', newline='\n')
+
+          lib = Path('apps/desktop/src-tauri/src/lib.rs')
+          lib_text = lib.read_text(encoding='utf-8')
+          lib_marker = '''            history_storage::history_replace_all,\n            history_storage::history_delete_report,\n'''
+          lib_replacement = '''            history_storage::history_replace_all,\n            history_storage::history_rewrite_all,\n            history_storage::history_delete_report,\n'''
+          if lib_text.count(lib_marker) != 1:
+              raise SystemExit('lib handler marker mismatch')
+          lib.write_text(lib_text.replace(lib_marker, lib_replacement), encoding='utf-8', newline='\n')
+
+      - name: Сохранить Rust policy patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff -- apps/desktop/src-tauri/src/history_storage.rs apps/desktop/src-tauri/src/lib.rs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src/history_storage.rs apps/desktop/src-tauri/src/lib.rs
+          git commit -m "feat: добавить Rust rewrite для history policy"
+          git push origin HEAD:tmp/v040-lock-refresh
