@@ -7,6 +7,7 @@ on:
       - 'apps/desktop/src-tauri/src/analysis/**'
       - 'apps/desktop/src-tauri/fuzz/**'
       - '.github/workflows/security-fuzz.yml'
+      - 'docs/security/fuzzing-policy.md'
   schedule:
     - cron: '23 3 * * 1'
   workflow_dispatch:
@@ -18,11 +19,15 @@ concurrency:
   group: security-fuzz-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && '20' || '600' }}
+  FUZZ_RSS_MB: '1024'
+
 jobs:
-  fuzz-smoke:
-    name: Bounded cargo-fuzz smoke
+  fuzz:
+    name: ${{ github.event_name == 'pull_request' && 'Bounded cargo-fuzz smoke' || 'Scheduled/manual cargo-fuzz long run' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - name: Получить исходный код
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,17 +55,31 @@ jobs:
       - name: Установить cargo-fuzz
         run: cargo install cargo-fuzz --version 0.13.2 --locked
 
+      - name: Показать fuzz profile
+        run: |
+          echo "event=${{ github.event_name }}"
+          echo "seconds_per_target=${FUZZ_SECONDS}"
+          echo "rss_limit_mb=${FUZZ_RSS_MB}"
+
       - name: Проверить десериализацию отчётов
         working-directory: apps/desktop/src-tauri
-        run: cargo fuzz run report_deserialization -- -max_total_time=20 -max_len=262144 -rss_limit_mb=1024
+        run: cargo fuzz run report_deserialization -- -max_total_time=${FUZZ_SECONDS} -timeout=10 -max_len=262144 -rss_limit_mb=${FUZZ_RSS_MB}
 
       - name: Проверить пассивный URL-анализ
         working-directory: apps/desktop/src-tauri
-        run: cargo fuzz run passive_url -- -max_total_time=20 -max_len=4096 -rss_limit_mb=1024
+        run: cargo fuzz run passive_url -- -max_total_time=${FUZZ_SECONDS} -timeout=10 -max_len=4096 -rss_limit_mb=${FUZZ_RSS_MB}
 
       - name: Проверить Rule Engine
         working-directory: apps/desktop/src-tauri
-        run: cargo fuzz run rule_engine -- -max_total_time=20 -max_len=65536 -rss_limit_mb=1024
+        run: cargo fuzz run rule_engine -- -max_total_time=${FUZZ_SECONDS} -timeout=10 -max_len=65536 -rss_limit_mb=${FUZZ_RSS_MB}
+
+      - name: Проверить file magic, PE parser и section boundaries
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run file_format_pe -- -max_total_time=${FUZZ_SECONDS} -timeout=10 -max_len=4194304 -rss_limit_mb=${FUZZ_RSS_MB}
+
+      - name: Проверить ZIP metadata traversal и path normalization
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run zip_metadata -- -max_total_time=${FUZZ_SECONDS} -timeout=10 -max_len=8388608 -rss_limit_mb=${FUZZ_RSS_MB}
 
       - name: Сохранить crash inputs только при ошибке
         if: failure()
