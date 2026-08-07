@@ -3,7 +3,7 @@ export type RiskLevel = 'noThreatsFound' | 'caution' | 'highRisk' | 'dangerous';
 export type AnalysisCompleteness = 'complete' | 'partial' | 'stoppedByLimit' | 'failed';
 
 export const FILESCOPE_REPORT_SCHEMA_VERSION = 1;
-export const FILESCOPE_HISTORY_STORAGE_VERSION = 1;
+export const FILESCOPE_HISTORY_STORAGE_VERSION = 2;
 
 export type HistoryStorageStatus = 'ready' | 'empty' | 'corrupted' | 'unsupported' | 'tooLarge' | 'unavailable';
 
