@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { HistoryPreferences } from '../../../shared/services/settings-service';
 import {
   HISTORY_STORAGE_KEY,
   HISTORY_STORAGE_VERSION,
@@ -34,6 +35,12 @@ describe('Tauri report history repository v0.4.0', () => {
     expect(fake.reports()[0].url?.normalizedUrl).toBe('https://example.com/path');
     expect(fake.reports()[0].url?.responseHeaders).toEqual([['Content-Type', 'text/plain']]);
     expect(fake.reports()[0].metadata.privacyPreparedForV040).toBe(true);
+    expect(fake.reports()[0].metadata.privacyRedactions).toMatchObject({
+      credentialsRemovedFromUrls: true,
+      queryRemovedFromUrls: true,
+      fragmentRemovedFromUrls: true,
+      sensitiveResponseHeadersRemoved: 1,
+    });
     expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBe(raw);
     expect(localStorage.getItem('filescope:migration-backup:v0.3.4')).toBeNull();
   });
@@ -48,7 +55,7 @@ describe('Tauri report history repository v0.4.0', () => {
 
     expect(loaded.status).toBe('ready');
     expect(loaded.reports[0].id).toBe('tauri');
-    expect(fake.calls).toEqual(['history_load']);
+    expect(fake.calls).toEqual(['history_load', 'history_rewrite_all']);
     expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBe('{broken');
   });
 
@@ -89,7 +96,72 @@ describe('Tauri report history repository v0.4.0', () => {
     expect(fake.calls).toEqual(['history_load', 'history_replace_all', 'history_save_report']);
   });
 
-  it('полная очистка удаляет Rust и legacy report payload', async () => {
+  it('при отключённом сохранении держит новый отчёт только в памяти сеанса', async () => {
+    const fake = createBridge([sampleUrlReport('persisted')]);
+    const repository = repositoryWithPolicy(fake.bridge, {
+      ...defaultPolicy(),
+      enabled: false,
+    });
+
+    const saved = await repository.save(sampleUrlReport('session-only'));
+
+    expect(saved.reports.map((report) => report.id)).toEqual(['session-only', 'persisted']);
+    expect(saved.persisted).toBe(false);
+    expect(fake.reports().map((report) => report.id)).toEqual(['persisted']);
+    expect(fake.calls).toEqual(['history_load', 'history_rewrite_all']);
+  });
+
+  it('режим текущего сеанса не записывает новые отчёты на диск', async () => {
+    const fake = createBridge();
+    const repository = repositoryWithPolicy(fake.bridge, {
+      ...defaultPolicy(),
+      retention: 'session',
+    });
+
+    const first = await repository.save(sampleUrlReport('session-one'));
+    const loaded = await repository.load();
+
+    expect(first.persisted).toBe(false);
+    expect(loaded.reports.map((report) => report.id)).toEqual(['session-one']);
+    expect(fake.reports()).toEqual([]);
+    expect(fake.calls).toEqual(['history_load', 'history_load']);
+  });
+
+  it('retention 1d удаляет устаревшие persistent reports через Rust rewrite', async () => {
+    const old = sampleUrlReport('old');
+    old.startedAt = '2000-01-01T00:00:00Z';
+    old.completedAt = '2000-01-01T00:00:01Z';
+    const recent = sampleUrlReport('recent');
+    recent.startedAt = new Date(Date.now() - 30_000).toISOString();
+    recent.completedAt = new Date(Date.now() - 29_000).toISOString();
+    const fake = createBridge([old, recent]);
+    const repository = repositoryWithPolicy(fake.bridge, {
+      ...defaultPolicy(),
+      retention: '1d',
+    });
+
+    const loaded = await repository.load();
+
+    expect(loaded.reports.map((report) => report.id)).toEqual(['recent']);
+    expect(fake.reports().map((report) => report.id)).toEqual(['recent']);
+    expect(fake.calls).toEqual(['history_load', 'history_rewrite_all']);
+  });
+
+  it('явное сохранение полного URL оставляет query/fragment, но удаляет credentials и sensitive headers', async () => {
+    const fake = createBridge();
+    const repository = repositoryWithPolicy(fake.bridge, {
+      ...defaultPolicy(),
+      preserveFullUrl: true,
+    });
+
+    await repository.save(sampleUrlReport('full-url'));
+
+    expect(fake.reports()[0].target).toBe('https://example.com/path?token=secret#fragment');
+    expect(fake.reports()[0].url?.normalizedUrl).toBe('https://example.com/path?token=secret#fragment');
+    expect(fake.reports()[0].url?.responseHeaders).toEqual([['Content-Type', 'text/plain']]);
+  });
+
+  it('полная очистка удаляет Rust, session и legacy report payload', async () => {
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify({
       storageVersion: HISTORY_STORAGE_VERSION,
       reportSchemaVersion: 1,
@@ -97,16 +169,33 @@ describe('Tauri report history repository v0.4.0', () => {
       reports: [sampleUrlReport('legacy')],
     }));
     const fake = createBridge([sampleUrlReport('tauri')]);
-    const repository = new TauriReportHistoryRepository(fake.bridge);
+    const repository = repositoryWithPolicy(fake.bridge, {
+      ...defaultPolicy(),
+      retention: 'session',
+    });
+    await repository.save(sampleUrlReport('session'));
 
     const cleared = await repository.clear();
 
     expect(cleared.status).toBe('empty');
     expect(fake.reports()).toEqual([]);
+    expect((await repository.load()).reports).toEqual([]);
     expect(localStorage.getItem(HISTORY_STORAGE_KEY)).toBeNull();
-    expect(fake.calls).toEqual(['history_clear']);
   });
 });
+
+function repositoryWithPolicy(bridge: HistoryCommandBridge, policy: HistoryPreferences) {
+  return new TauriReportHistoryRepository(bridge, undefined, () => policy);
+}
+
+function defaultPolicy(): HistoryPreferences {
+  return {
+    enabled: true,
+    retention: 'forever',
+    preserveFullPath: false,
+    preserveFullUrl: false,
+  };
+}
 
 function createBridge(initial: AnalysisReport[] = []) {
   let reports = [...initial];
@@ -114,6 +203,8 @@ function createBridge(initial: AnalysisReport[] = []) {
   const bridge: HistoryCommandBridge = async <T>(command: string, args?: Record<string, unknown>) => {
     calls.push(command);
     if (command === 'history_replace_all' && reports.length === 0) {
+      reports = [...((args?.reports as AnalysisReport[] | undefined) ?? [])];
+    } else if (command === 'history_rewrite_all') {
       reports = [...((args?.reports as AnalysisReport[] | undefined) ?? [])];
     } else if (command === 'history_save_report') {
       const report = args?.report as AnalysisReport;
@@ -143,7 +234,7 @@ function snapshot(reports: AnalysisReport[]) {
 function sampleUrlReport(id: string): AnalysisReport {
   return {
     schemaVersion: 1,
-    appVersion: '0.3.4',
+    appVersion: '0.4.0',
     analyzerVersion: 'test',
     ruleSetVersion: 'test',
     createdBy: { platform: 'test', architecture: 'test', runtime: 'test' },
