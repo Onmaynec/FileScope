@@ -50,6 +50,16 @@ export function minimizeReportForFutureStorage(
     : minimizePathForHistory(report.target, policy.preserveFullPath);
   const originalHeaders = report.url?.responseHeaders ?? [];
   const filteredHeaders = filterHeadersForHistory(originalHeaders);
+  const previousRedactions = readPreviousRedactions(report.metadata.privacyRedactions);
+  const credentialsRemovedFromUrls = previousRedactions.credentialsRemovedFromUrls
+    || isUrl
+    || Boolean(report.url);
+  const fullPathMinimized = previousRedactions.fullPathMinimized
+    || (!isUrl && !policy.preserveFullPath);
+  const queryRemovedFromUrls = previousRedactions.queryRemovedFromUrls || !policy.preserveUrlQuery;
+  const fragmentRemovedFromUrls = previousRedactions.fragmentRemovedFromUrls || !policy.preserveUrlFragment;
+  const sensitiveResponseHeadersRemoved = previousRedactions.sensitiveResponseHeadersRemoved
+    + (originalHeaders.length - filteredHeaders.length);
   const url = report.url
     ? {
         ...report.url,
@@ -65,16 +75,40 @@ export function minimizeReportForFutureStorage(
     metadata: {
       ...report.metadata,
       privacyPreparedForV040: true,
-      fullPathPreserved: policy.preserveFullPath,
-      urlQueryPreserved: policy.preserveUrlQuery,
-      urlFragmentPreserved: policy.preserveUrlFragment,
+      fullPathPreserved: policy.preserveFullPath && !fullPathMinimized,
+      urlQueryPreserved: policy.preserveUrlQuery && !queryRemovedFromUrls,
+      urlFragmentPreserved: policy.preserveUrlFragment && !fragmentRemovedFromUrls,
       privacyRedactions: {
-        credentialsRemovedFromUrls: isUrl || Boolean(report.url),
-        fullPathMinimized: !isUrl && !policy.preserveFullPath,
-        queryRemovedFromUrls: !policy.preserveUrlQuery,
-        fragmentRemovedFromUrls: !policy.preserveUrlFragment,
-        sensitiveResponseHeadersRemoved: originalHeaders.length - filteredHeaders.length,
+        credentialsRemovedFromUrls,
+        fullPathMinimized,
+        queryRemovedFromUrls,
+        fragmentRemovedFromUrls,
+        sensitiveResponseHeadersRemoved,
       },
     },
+  };
+}
+
+function readPreviousRedactions(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      credentialsRemovedFromUrls: false,
+      fullPathMinimized: false,
+      queryRemovedFromUrls: false,
+      fragmentRemovedFromUrls: false,
+      sensitiveResponseHeadersRemoved: 0,
+    };
+  }
+  const redactions = value as Record<string, unknown>;
+  return {
+    credentialsRemovedFromUrls: redactions.credentialsRemovedFromUrls === true,
+    fullPathMinimized: redactions.fullPathMinimized === true,
+    queryRemovedFromUrls: redactions.queryRemovedFromUrls === true,
+    fragmentRemovedFromUrls: redactions.fragmentRemovedFromUrls === true,
+    sensitiveResponseHeadersRemoved: typeof redactions.sensitiveResponseHeadersRemoved === 'number'
+      && Number.isFinite(redactions.sensitiveResponseHeadersRemoved)
+      && redactions.sensitiveResponseHeadersRemoved > 0
+      ? Math.floor(redactions.sensitiveResponseHeadersRemoved)
+      : 0,
   };
 }
