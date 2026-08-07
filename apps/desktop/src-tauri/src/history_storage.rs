@@ -206,13 +206,17 @@ impl HistoryStore {
 
     fn publish(&self, reports: Vec<AnalysisReport>) -> HistoryStorageSnapshot {
         if reports.len() > MAXIMUM_REPORTS {
-            return unavailable("Количество отчётов превышает внутренний лимит history store.".to_string());
+            return unavailable(
+                "Количество отчётов превышает внутренний лимит history store.".to_string(),
+            );
         }
         if reports
             .iter()
             .any(|report| report.schema_version != REPORT_SCHEMA_VERSION)
         {
-            return unsupported("History store не записывает отчёты неизвестной schemaVersion.".to_string());
+            return unsupported(
+                "History store не записывает отчёты неизвестной schemaVersion.".to_string(),
+            );
         }
 
         let envelope = HistoryEnvelope {
@@ -258,8 +262,9 @@ impl HistoryStore {
                 .map_err(|error| format!("Не удалось создать временную историю: {error}"))?;
             file.write_all(&raw)
                 .map_err(|error| format!("Не удалось записать временную историю: {error}"))?;
-            file.sync_all()
-                .map_err(|error| format!("Не удалось синхронизировать временную историю: {error}"))?;
+            file.sync_all().map_err(|error| {
+                format!("Не удалось синхронизировать временную историю: {error}")
+            })?;
             drop(file);
             fs::rename(&temp_path, &final_path)
                 .map_err(|error| format!("Не удалось атомарно опубликовать историю: {error}"))?;
@@ -310,7 +315,10 @@ impl HistoryStore {
                 persisted: false,
                 size_bytes: size,
                 generation: file_name(path),
-                message: Some("History generation превышает безопасный лимит и оставлена без изменений.".to_string()),
+                message: Some(
+                    "History generation превышает безопасный лимит и оставлена без изменений."
+                        .to_string(),
+                ),
             });
         }
         let raw = match fs::read(path) {
@@ -331,10 +339,15 @@ impl HistoryStore {
             }
         };
         let Some(storage_version) = value.get("storageVersion").and_then(Value::as_u64) else {
-            return GenerationRead::Corrupted("History generation не содержит storageVersion.".to_string());
+            return GenerationRead::Corrupted(
+                "History generation не содержит storageVersion.".to_string(),
+            );
         };
-        let Some(report_schema_version) = value.get("reportSchemaVersion").and_then(Value::as_u64) else {
-            return GenerationRead::Corrupted("History generation не содержит reportSchemaVersion.".to_string());
+        let Some(report_schema_version) = value.get("reportSchemaVersion").and_then(Value::as_u64)
+        else {
+            return GenerationRead::Corrupted(
+                "History generation не содержит reportSchemaVersion.".to_string(),
+            );
         };
         if storage_version > HISTORY_STORAGE_VERSION as u64
             || report_schema_version > REPORT_SCHEMA_VERSION as u64
@@ -358,7 +371,9 @@ impl HistoryStore {
             ));
         }
         let Some(reports) = value.get("reports").and_then(Value::as_array) else {
-            return GenerationRead::Corrupted("History generation не содержит массив reports.".to_string());
+            return GenerationRead::Corrupted(
+                "History generation не содержит массив reports.".to_string(),
+            );
         };
         if reports.len() > MAXIMUM_REPORTS {
             return GenerationRead::Blocked(HistoryStorageSnapshot {
@@ -431,7 +446,9 @@ impl HistoryStore {
             if path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with(GENERATION_PREFIX) && name.ends_with(TEMP_SUFFIX))
+                .is_some_and(|name| {
+                    name.starts_with(GENERATION_PREFIX) && name.ends_with(TEMP_SUFFIX)
+                })
             {
                 let _ = fs::remove_file(path);
             }
@@ -507,13 +524,18 @@ fn with_store(
     };
     let directory = match app.path().app_data_dir() {
         Ok(path) => path.join(HISTORY_DIRECTORY),
-        Err(error) => return unavailable(format!("Не удалось определить app-data каталог: {error}")),
+        Err(error) => {
+            return unavailable(format!("Не удалось определить app-data каталог: {error}"))
+        }
     };
     operation(&HistoryStore::new(directory))
 }
 
 fn can_mutate(status: HistoryStorageStatus) -> bool {
-    matches!(status, HistoryStorageStatus::Ready | HistoryStorageStatus::Empty)
+    matches!(
+        status,
+        HistoryStorageStatus::Ready | HistoryStorageStatus::Empty
+    )
 }
 
 fn empty_snapshot() -> HistoryStorageSnapshot {
@@ -567,13 +589,17 @@ fn file_name(path: &Path) -> Option<String> {
 }
 
 fn file_size(path: &Path) -> u64 {
-    fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0)
+    fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
 }
 
 fn is_generation_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with(GENERATION_PREFIX) && name.ends_with(GENERATION_SUFFIX))
+        .is_some_and(|name| {
+            name.starts_with(GENERATION_PREFIX) && name.ends_with(GENERATION_SUFFIX)
+        })
 }
 
 fn is_history_file(path: &Path) -> bool {
@@ -603,7 +629,10 @@ mod tests {
 
         let second = store.save_report(sample_report("two"));
         assert_eq!(second.reports.len(), 2);
-        assert_ne!(second.generation.as_deref(), Some(first_generation.as_str()));
+        assert_ne!(
+            second.generation.as_deref(),
+            Some(first_generation.as_str())
+        );
         assert!(store.directory.join(first_generation).exists());
         assert_eq!(store.load().reports[0].id, "two");
     }
@@ -613,7 +642,9 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let directory = temp.path().join("history");
         fs::create_dir_all(&directory).unwrap();
-        let path = directory.join(format!("{GENERATION_PREFIX}99999999999999999999-future{GENERATION_SUFFIX}"));
+        let path = directory.join(format!(
+            "{GENERATION_PREFIX}99999999999999999999-future{GENERATION_SUFFIX}"
+        ));
         let raw = serde_json::to_vec(&json!({
             "storageVersion": HISTORY_STORAGE_VERSION + 1,
             "reportSchemaVersion": REPORT_SCHEMA_VERSION + 1,
@@ -624,7 +655,10 @@ mod tests {
         fs::write(&path, &raw).unwrap();
         let store = HistoryStore::new(directory);
         assert_eq!(store.load().status, HistoryStorageStatus::Unsupported);
-        assert_eq!(store.save_report(sample_report("new")).status, HistoryStorageStatus::Unsupported);
+        assert_eq!(
+            store.save_report(sample_report("new")).status,
+            HistoryStorageStatus::Unsupported
+        );
         assert_eq!(fs::read(path).unwrap(), raw);
     }
 
@@ -634,14 +668,18 @@ mod tests {
         let store = HistoryStore::new(temp.path().join("history"));
         let valid = store.save_report(sample_report("safe"));
         assert_eq!(valid.status, HistoryStorageStatus::Ready);
-        let corrupt = store
-            .directory
-            .join(format!("{GENERATION_PREFIX}99999999999999999999-corrupt{GENERATION_SUFFIX}"));
+        let corrupt = store.directory.join(format!(
+            "{GENERATION_PREFIX}99999999999999999999-corrupt{GENERATION_SUFFIX}"
+        ));
         fs::write(corrupt, b"{broken").unwrap();
         let recovered = store.load();
         assert_eq!(recovered.status, HistoryStorageStatus::Ready);
         assert_eq!(recovered.reports[0].id, "safe");
-        assert!(recovered.message.as_deref().unwrap_or_default().contains("Восстановлена"));
+        assert!(recovered
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Восстановлена"));
     }
 
     #[test]
@@ -659,11 +697,20 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let store = HistoryStore::new(temp.path().join("history"));
         store.save_report(sample_report("one"));
-        fs::write(store.directory.join(format!("{GENERATION_PREFIX}orphan{TEMP_SUFFIX}")), b"partial").unwrap();
+        fs::write(
+            store
+                .directory
+                .join(format!("{GENERATION_PREFIX}orphan{TEMP_SUFFIX}")),
+            b"partial",
+        )
+        .unwrap();
         let cleared = store.clear();
         assert_eq!(cleared.status, HistoryStorageStatus::Empty);
         assert!(store.generations().unwrap().is_empty());
-        assert!(!store.directory.join(format!("{GENERATION_PREFIX}orphan{TEMP_SUFFIX}")).exists());
+        assert!(!store
+            .directory
+            .join(format!("{GENERATION_PREFIX}orphan{TEMP_SUFFIX}"))
+            .exists());
     }
 
     fn sample_report(id: &str) -> AnalysisReport {
