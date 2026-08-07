@@ -1,4 +1,3 @@
-
 [package]
 name = "filescope-fuzz"
 version = "0.0.0"
@@ -29,6 +28,20 @@ bench = false
 [[bin]]
 name = "rule_engine"
 path = "fuzz_targets/rule_engine.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "file_format_pe"
+path = "fuzz_targets/file_format_pe.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "zip_metadata"
+path = "fuzz_targets/zip_metadata.rs"
 test = false
 doc = false
 bench = false
