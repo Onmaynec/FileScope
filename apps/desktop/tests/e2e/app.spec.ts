@@ -6,10 +6,10 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('открывается функциональный главный экран v0.3.3', async ({ page }) => {
+test('открывается функциональный главный экран v0.4.0', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Реальный анализ до запуска' })).toBeVisible();
   await expect(page.locator('aside[aria-label="Основная навигация"]')).toBeVisible();
-  await expect(page.getByText('Версия 0.3.3')).toBeVisible();
+  await expect(page.getByText('Версия 0.4.0')).toBeVisible();
 });
 
 test('кнопка загрузки файлов использует понятный текст', async ({ page }) => {
@@ -23,7 +23,7 @@ test('кастомный select доступен с клавиатуры и со
   const closeBehavior = page.getByRole('button', { name: 'Поведение при закрытии' });
 
   await expect(page.getByText('Версия приложения')).toBeVisible();
-  await expect(page.getByText('0.3.3', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.4.0', { exact: true })).toBeVisible();
   await expect(closeBehavior).toContainText('Сворачивать в трей');
   await closeBehavior.focus();
   await closeBehavior.press('Enter');
@@ -59,6 +59,22 @@ test('несколько URL образуют master-detail очередь', asy
   await expect(queuePane).toContainText('example.org');
   await expect(detailPane).toBeVisible();
   await expect(page.getByRole('button', { name: 'Запустить очередь (2)' })).toBeVisible();
+});
+
+test('duplicate URL выбирает существующую строку и не создаёт несуществующий selectedId', async ({ page }) => {
+  await page.getByRole('button', { name: 'Ссылки', exact: true }).click();
+  const input = page.getByLabel('Адрес');
+  const value = 'https://example.com/duplicate';
+
+  await input.fill(value);
+  await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
+  await page.getByRole('button', { name: 'Добавить URL в очередь' }).click();
+
+  await expect(page.getByRole('button', { name: 'Запустить очередь (1)' })).toBeVisible();
+  await expect(page.getByText('Объект уже находится в активной очереди. Выбрана существующая строка.')).toBeVisible();
+  const detailPane = page.locator('section.analysis-detail-pane');
+  await expect(detailPane).toContainText('example.com');
+  await expect(detailPane).not.toContainText('Выберите задание');
 });
 
 test('фильтры очереди используют доступные listbox', async ({ page }) => {

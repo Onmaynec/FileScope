@@ -5,6 +5,7 @@ FileScope — desktop-приложение Veilbyte для Windows, предна
 > **Классификация:** Public Source-Available · Active · Pre-1.0  
 > **Текущая стабильная версия:** `v0.3.3`  
 > **Последний опубликованный релиз:** `v0.3.3`  
+> **Текущая версия разработки:** `v0.4.0`  
 > **Владелец:** Veilbyte · `@Onmaynec`
 
 Исходный код доступен для просмотра и security-review, но FileScope **не является open-source проектом**. Использование, изменение, распространение, размещение и интеграция регулируются [ограниченной лицензией](LICENSE) и без отдельного письменного разрешения запрещены.
@@ -39,6 +40,25 @@ FileScope — desktop-приложение Veilbyte для Windows, предна
 - отдельный режим полного завершения приложения;
 - Windows release EXE без дополнительного консольного окна;
 - единый утверждённый логотип для EXE, установщика, ярлыка, окна, панели задач и трея.
+
+## Разработка v0.4.0
+
+Ветка `feature/v0.4.0` развивает storage/privacy/security foundation, подготовленный в v0.3.4. Текущий кодовый scope включает:
+
+- authoritative history backend в Rust/Tauri app-data вместо WebView `localStorage`;
+- generation-based persistence через temporary write, `sync_all` и atomic rename с recovery предыдущей валидной generation;
+- безопасную read-only миграцию legacy WebView history без double-write новых reports;
+- настройки сохранения history и retention: текущий сеанс / 1 / 7 / 30 дней / без автоудаления;
+- privacy minimization полного пути, URL credentials/query/fragment и sensitive response headers до persistence;
+- Windows current-user DPAPI для новых persistent history generations без plaintext fallback;
+- фактический DPAPI/plaintext/mixed status в Settings UI;
+- portable policy: EXE переносим, persistent history остаётся per-user app-data и не переносится вместе с приложением;
+- bounded property/fuzz testing для report serde, passive URL, Rule Engine, file/PE и ZIP metadata parser families;
+- быстрый PR fuzz smoke и отдельный scheduled/manual long fuzz profile.
+
+v0.4.0 пока **не является опубликованным релизом**. До release остаются ручная migration/crash/read-only/cross-user DPAPI проверка, фактический long fuzz run и финальный release preflight.
+
+Подробности: [план v0.4.0](docs/product/v0.4.0-development-plan.md), [readiness checklist](docs/product/v0.4.0-readiness-checklist.md), [ручной QA](docs/product/v0.4.0-manual-qa.md), [защита history storage](docs/architecture/history-storage-protection-v040.md) и [fuzzing policy](docs/security/fuzzing-policy.md).
 
 ## BugFix v0.3.3
 
@@ -92,6 +112,7 @@ FileScope не считает сам факт использования `Virtua
 - `pnpm doctor` выполняет только локальные проверки, не меняет систему и не отправляет сведения наружу;
 - файлы и отчёты не отправляются во внешние сервисы;
 - настоящие вредоносные образцы в репозитории отсутствуют;
+- fuzz corpus не должен содержать malware, активные вредоносные URL, secrets или пользовательские файлы;
 - отсутствие обнаруженных признаков не считается абсолютной гарантией безопасности.
 
 FileScope предназначен только для законной защиты пользователя и разрешённого исследования. Подробности: [ответственное использование](RESPONSIBLE_USE.md).
@@ -179,14 +200,19 @@ cargo check --locked
 
 После установки зависимостей и production-сборки `pnpm-lock.yaml` и `apps/desktop/src-tauri/Cargo.lock` не должны изменяться. Официальная релизная сборка дополнительно проходит Tauri production build и Windows x64 NSIS packaging в GitHub Actions.
 
+Security-sensitive parser changes дополнительно проходят cargo-fuzz. PR использует 20-секундный smoke на target; scheduled/manual профиль использует 600 секунд на target. Активные targets: `report_deserialization`, `passive_url`, `rule_engine`, `file_format_pe`, `zip_metadata`. Подробные ограничения corpus, ресурсов и private triage находятся в [fuzzing policy](docs/security/fuzzing-policy.md).
+
 ## Архитектура
 
 - `apps/desktop/src/app/v020` — оболочка функциональной версии;
 - `apps/desktop/src/features/analysis` — frontend API, модели, отчёты и рабочее пространство;
 - `apps/desktop/src-tauri/src/analysis` — Rust-анализаторы, Rule Engine и доменные типы;
+- `apps/desktop/src-tauri/src/history_storage.rs` — authoritative generation-based history store;
+- `apps/desktop/src-tauri/src/history_protection.rs` — Windows current-user DPAPI boundary для persistent history;
 - `apps/desktop/src-tauri/src/window_lifecycle.rs` — нативная политика закрытия окна;
 - `apps/desktop/src-tauri/icons/filescope-logo.svg` — единый исходник иконок Windows;
 - `scripts/doctor.mjs` — локальная диагностика окружения сборки;
+- `scripts/check-v040-readiness.mjs` — автоматическая проверка storage/DPAPI/fuzzing release invariants;
 - `docs/architecture` — архитектурные решения;
 - `docs/product` — границы версий;
 - `docs/design-system` — дизайн- и motion-система.
