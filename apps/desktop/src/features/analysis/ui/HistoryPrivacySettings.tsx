@@ -10,6 +10,10 @@ import {
   loadReportHistory,
 } from '../model/analysis-storage';
 import type { ReportHistorySnapshot } from '../model/history-repository';
+import {
+  inspectTauriHistoryProtection,
+  type HistoryProtectionSnapshot,
+} from '../model/tauri-history-repository';
 
 const retentionOptions = [
   { value: 'session', label: 'Только текущий сеанс' },
@@ -23,13 +27,16 @@ export function HistoryPrivacySettings() {
   const { preferences, patchPreferences } = useAppPreferences();
   const policy = preferences.history;
   const [snapshot, setSnapshot] = useState<ReportHistorySnapshot | null>(null);
+  const [protection, setProtection] = useState<HistoryProtectionSnapshot | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void loadReportHistory().then((value) => {
-      if (active) setSnapshot(value);
+    void Promise.all([loadReportHistory(), inspectTauriHistoryProtection()]).then(([history, status]) => {
+      if (!active) return;
+      setSnapshot(history);
+      setProtection(status);
     });
     return () => { active = false; };
   }, [policy.enabled, policy.retention, policy.preserveFullPath, policy.preserveFullUrl]);
@@ -39,19 +46,26 @@ export function HistoryPrivacySettings() {
   };
 
   const refresh = async () => {
-    const value = await inspectHistoryStorage();
-    setSnapshot(value);
+    const [history, status] = await Promise.all([
+      inspectHistoryStorage(),
+      inspectTauriHistoryProtection(),
+    ]);
+    setSnapshot(history);
+    setProtection(status);
   };
 
   const clear = async () => {
     setBusy(true);
     const value = await clearReportHistory();
+    const status = await inspectTauriHistoryProtection();
     setSnapshot(value);
+    setProtection(status);
     setBusy(false);
     if (value.persisted && value.status === 'empty') setConfirmClear(false);
   };
 
   const storage = snapshotDetails(snapshot);
+  const protectionDetails = protectionStatusDetails(protection);
 
   return <section className="card settings-v020">
     <h2>История и приватность</h2>
@@ -91,8 +105,12 @@ export function HistoryPrivacySettings() {
       <span className="badge neutral">{storage.size}</span>
     </div>
     <div className="setting-row">
-      <div><strong>Защита Windows</strong><span>Сейчас используется контролируемый Rust/Tauri app-data storage с атомарными generations. DPAPI ещё не включён и будет отдельным этапом v0.4.0.</span></div>
-      <span className="badge warning">Без DPAPI</span>
+      <div><strong>Защита Windows</strong><span>{protectionDetails.description}</span></div>
+      <span className={`badge ${protectionDetails.tone}`}>{protectionDetails.label}</span>
+    </div>
+    <div className="setting-row">
+      <div><strong>Portable mode</strong><span>Portable EXE переносим, но история — нет: persistent history остаётся в app-data текущего Windows-пользователя и защищается его DPAPI. Копирование EXE или encrypted generation на другой ПК/профиль не переносит доступ к истории.</span></div>
+      <span className="badge neutral">User-bound</span>
     </div>
 
     <div className="button-row">
@@ -137,6 +155,50 @@ function snapshotDetails(snapshot: ReportHistorySnapshot | null) {
     size,
     reportCount: snapshot.reports.length,
   };
+}
+
+function protectionStatusDetails(snapshot: HistoryProtectionSnapshot | null) {
+  if (!snapshot) {
+    return { label: 'Проверка…', tone: 'neutral', description: 'Читается фактический protection status Rust storage.' };
+  }
+  switch (snapshot.status) {
+    case 'dpapiCurrentUser':
+      return {
+        label: 'DPAPI / Current user',
+        tone: 'success',
+        description: snapshot.message ?? 'History generations защищены Windows DPAPI и привязаны к текущему Windows-пользователю.',
+      };
+    case 'empty':
+      return {
+        label: 'DPAPI при записи',
+        tone: 'success',
+        description: 'Persistent history пуста. Следующая запись на Windows будет защищена DPAPI current-user.',
+      };
+    case 'plaintext':
+      return {
+        label: 'Миграция DPAPI',
+        tone: 'warning',
+        description: snapshot.message ?? 'Обнаружена legacy plaintext history; безопасный rewrite должен перевести её в DPAPI.',
+      };
+    case 'mixed':
+      return {
+        label: 'Частичная защита',
+        tone: 'warning',
+        description: snapshot.message ?? 'Есть одновременно DPAPI и legacy plaintext generations; состояние не считается полностью защищённым.',
+      };
+    case 'notSupported':
+      return {
+        label: 'Не Windows runtime',
+        tone: 'neutral',
+        description: snapshot.message ?? 'DPAPI недоступен в этом runtime.',
+      };
+    case 'unavailable':
+      return {
+        label: 'Статус недоступен',
+        tone: 'warning',
+        description: snapshot.message ?? 'Не удалось подтвердить фактическое состояние Windows DPAPI.',
+      };
+  }
 }
 
 function formatBytes(value: number): string {
