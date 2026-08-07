@@ -239,7 +239,8 @@ export class TauriReportHistoryRepository implements ReportHistoryRepository {
     const reports = mergeReports(this.sessionReports, persistent.reports);
     const sessionReportCount = this.sessionReports.length;
     const message = [persistent.message, extraMessage].filter(Boolean).join(' ');
-    const { protectionVerified: _protectionVerified, ...publicPersistent } = persistent;
+    const publicPersistent: PersistentHistorySnapshot = { ...persistent };
+    delete publicPersistent.protectionVerified;
     return {
       ...publicPersistent,
       reports,
