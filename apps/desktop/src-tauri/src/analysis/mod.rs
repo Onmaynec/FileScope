@@ -148,7 +148,8 @@ fn normalize_file_report_coverage(report: &mut AnalysisReport) {
     }
 
     let generic_zip = report.detected_type.as_deref() == Some("ZIP archive");
-    let prefix_only_non_pe = report.detected_type.as_deref() != Some("Windows PE") && size > inspected;
+    let prefix_only_non_pe =
+        report.detected_type.as_deref() != Some("Windows PE") && size > inspected;
     if !generic_zip && !prefix_only_non_pe {
         return;
     }
@@ -157,7 +158,11 @@ fn normalize_file_report_coverage(report: &mut AnalysisReport) {
     if let Some(metadata) = report.metadata.as_object_mut() {
         metadata.insert(
             "coverageMode".to_string(),
-            json!(if generic_zip { "generic-zip-prefix-only" } else { "prefix-only" }),
+            json!(if generic_zip {
+                "generic-zip-prefix-only"
+            } else {
+                "prefix-only"
+            }),
         );
     }
     let limitation = if generic_zip {
