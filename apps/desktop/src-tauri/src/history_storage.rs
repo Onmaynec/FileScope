@@ -11,14 +11,21 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
-use crate::analysis::{AnalysisReport, REPORT_SCHEMA_VERSION};
+use crate::{
+    analysis::{AnalysisReport, REPORT_SCHEMA_VERSION},
+    history_protection::{
+        is_dpapi_payload, protect_payload, unprotect_payload, PayloadProtection,
+    },
+};
 
 pub const HISTORY_STORAGE_VERSION: u16 = 2;
 pub const MAXIMUM_REPORTS: usize = 250;
 pub const MAXIMUM_HISTORY_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
+const MAXIMUM_HISTORY_FILE_BYTES: usize = MAXIMUM_HISTORY_PAYLOAD_BYTES + 64 * 1024;
 const HISTORY_DIRECTORY: &str = "history";
 const GENERATION_PREFIX: &str = "reports-v2-";
-const GENERATION_SUFFIX: &str = ".json";
+const GENERATION_SUFFIX: &str = ".bin";
+const LEGACY_GENERATION_SUFFIX: &str = ".json";
 const TEMP_SUFFIX: &str = ".tmp";
 const GENERATIONS_TO_KEEP: usize = 2;
 
@@ -36,6 +43,26 @@ pub enum HistoryStorageStatus {
     Unsupported,
     TooLarge,
     Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HistoryProtectionStatus {
+    DpapiCurrentUser,
+    Plaintext,
+    Mixed,
+    Empty,
+    Unavailable,
+    NotSupported,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryProtectionSnapshot {
+    pub status: HistoryProtectionStatus,
+    pub dpapi_generations: usize,
+    pub plaintext_generations: usize,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -259,6 +286,19 @@ impl HistoryStore {
                 )),
             };
         }
+        let (stored, protection) = match protect_payload(&raw) {
+            Ok(value) => value,
+            Err(error) => {
+                return unavailable(format!(
+                    "Не удалось защитить history payload системным механизмом Windows: {error}"
+                ))
+            }
+        };
+        if stored.len() > MAXIMUM_HISTORY_FILE_BYTES {
+            return unavailable(
+                "Защищённый history payload превышает допустимый размер файла.".to_string(),
+            );
+        }
 
         if let Err(error) = fs::create_dir_all(&self.directory) {
             return unavailable(format!("Не удалось создать каталог истории: {error}"));
@@ -277,7 +317,7 @@ impl HistoryStore {
                 .write(true)
                 .open(&temp_path)
                 .map_err(|error| format!("Не удалось создать временную историю: {error}"))?;
-            file.write_all(&raw)
+            file.write_all(&stored)
                 .map_err(|error| format!("Не удалось записать временную историю: {error}"))?;
             file.sync_all().map_err(|error| {
                 format!("Не удалось синхронизировать временную историю: {error}")
@@ -293,6 +333,9 @@ impl HistoryStore {
             return unavailable(message);
         }
 
+        if protection == PayloadProtection::DpapiCurrentUser {
+            self.cleanup_plaintext_generations();
+        }
         self.cleanup_old_generations();
         let status = if envelope.reports.is_empty() {
             HistoryStorageStatus::Empty
@@ -303,7 +346,7 @@ impl HistoryStore {
             reports: envelope.reports,
             status,
             persisted: true,
-            size_bytes: raw.len() as u64,
+            size_bytes: stored.len() as u64,
             generation: Some(generation),
             message: None,
         }
@@ -326,7 +369,7 @@ impl HistoryStore {
 
     fn read_generation(&self, path: &Path) -> GenerationRead {
         let size = file_size(path);
-        if size as usize > MAXIMUM_HISTORY_PAYLOAD_BYTES {
+        if size as usize > MAXIMUM_HISTORY_FILE_BYTES {
             return GenerationRead::Blocked(HistoryStorageSnapshot {
                 reports: Vec::new(),
                 status: HistoryStorageStatus::TooLarge,
@@ -339,7 +382,7 @@ impl HistoryStore {
                 ),
             });
         }
-        let raw = match fs::read(path) {
+        let stored = match fs::read(path) {
             Ok(raw) => raw,
             Err(error) => {
                 return GenerationRead::Corrupted(format!(
@@ -348,6 +391,26 @@ impl HistoryStore {
                 ))
             }
         };
+        let (raw, _) = match unprotect_payload(&stored) {
+            Ok(value) => value,
+            Err(error) => {
+                return GenerationRead::Corrupted(format!(
+                    "History generation не прошла DPAPI integrity/decryption: {error}"
+                ))
+            }
+        };
+        if raw.len() > MAXIMUM_HISTORY_PAYLOAD_BYTES {
+            return GenerationRead::Blocked(HistoryStorageSnapshot {
+                reports: Vec::new(),
+                status: HistoryStorageStatus::TooLarge,
+                persisted: false,
+                size_bytes: size,
+                generation: file_name(path),
+                message: Some(
+                    "Расшифрованный history payload превышает безопасный лимит.".to_string(),
+                ),
+            });
+        }
         let value: Value = match serde_json::from_slice(&raw) {
             Ok(value) => value,
             Err(error) => {
@@ -450,6 +513,108 @@ impl HistoryStore {
         })
     }
 
+    fn protection_status(&self) -> HistoryProtectionSnapshot {
+        let generations = match self.generations() {
+            Ok(value) => value,
+            Err(message) => {
+                return HistoryProtectionSnapshot {
+                    status: HistoryProtectionStatus::Unavailable,
+                    dpapi_generations: 0,
+                    plaintext_generations: 0,
+                    message: Some(message),
+                }
+            }
+        };
+        if generations.is_empty() {
+            return HistoryProtectionSnapshot {
+                status: HistoryProtectionStatus::Empty,
+                dpapi_generations: 0,
+                plaintext_generations: 0,
+                message: None,
+            };
+        }
+
+        let mut dpapi_generations = 0;
+        let mut plaintext_generations = 0;
+        for path in generations {
+            let raw = match fs::read(&path) {
+                Ok(value) => value,
+                Err(error) => {
+                    return HistoryProtectionSnapshot {
+                        status: HistoryProtectionStatus::Unavailable,
+                        dpapi_generations,
+                        plaintext_generations,
+                        message: Some(format!(
+                            "Не удалось определить защиту generation {}: {error}",
+                            path.display()
+                        )),
+                    }
+                }
+            };
+            if is_dpapi_payload(&raw) {
+                dpapi_generations += 1;
+            } else {
+                plaintext_generations += 1;
+            }
+        }
+
+        let status = if !cfg!(windows) {
+            HistoryProtectionStatus::NotSupported
+        } else {
+            match (dpapi_generations, plaintext_generations) {
+                (0, 0) => HistoryProtectionStatus::Empty,
+                (0, _) => HistoryProtectionStatus::Plaintext,
+                (_, 0) => HistoryProtectionStatus::DpapiCurrentUser,
+                _ => HistoryProtectionStatus::Mixed,
+            }
+        };
+        let message = match status {
+            HistoryProtectionStatus::DpapiCurrentUser => Some(
+                "History generations защищены Windows DPAPI в scope текущего пользователя."
+                    .to_string(),
+            ),
+            HistoryProtectionStatus::Plaintext => Some(
+                "Обнаружена legacy plaintext history; при следующей безопасной перезаписи она будет мигрирована в DPAPI."
+                    .to_string(),
+            ),
+            HistoryProtectionStatus::Mixed => Some(
+                "Текущая history защищена DPAPI, но рядом осталась legacy plaintext generation; требуется повторная cleanup/rewrite."
+                    .to_string(),
+            ),
+            HistoryProtectionStatus::NotSupported => Some(
+                "DPAPI доступен только на Windows; этот runtime не обеспечивает системную защиту history payload."
+                    .to_string(),
+            ),
+            HistoryProtectionStatus::Unavailable => Some(
+                "Не удалось определить фактическое состояние защиты history storage.".to_string(),
+            ),
+            HistoryProtectionStatus::Empty => None,
+        };
+        HistoryProtectionSnapshot {
+            status,
+            dpapi_generations,
+            plaintext_generations,
+            message,
+        }
+    }
+
+    fn cleanup_plaintext_generations(&self) {
+        let Ok(generations) = self.generations() else {
+            return;
+        };
+        for path in generations {
+            let Ok(stored) = fs::read(&path) else {
+                continue;
+            };
+            if is_dpapi_payload(&stored) {
+                continue;
+            }
+            if matches!(self.read_generation(&path), GenerationRead::Ready(_)) {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+
     fn cleanup_old_generations(&self) {
         let Ok(generations) = self.generations() else {
             return;
@@ -494,6 +659,36 @@ pub fn history_inspect(
     state: State<'_, HistoryStorageState>,
 ) -> HistoryStorageSnapshot {
     with_store(&app, &state, HistoryStore::load)
+}
+
+#[tauri::command]
+pub fn history_protection_status(
+    app: AppHandle,
+    state: State<'_, HistoryStorageState>,
+) -> HistoryProtectionSnapshot {
+    let _guard = match state.gate.lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            return HistoryProtectionSnapshot {
+                status: HistoryProtectionStatus::Unavailable,
+                dpapi_generations: 0,
+                plaintext_generations: 0,
+                message: Some("History storage lock повреждён.".to_string()),
+            }
+        }
+    };
+    let directory = match app.path().app_data_dir() {
+        Ok(path) => path.join(HISTORY_DIRECTORY),
+        Err(error) => {
+            return HistoryProtectionSnapshot {
+                status: HistoryProtectionStatus::Unavailable,
+                dpapi_generations: 0,
+                plaintext_generations: 0,
+                message: Some(format!("Не удалось определить app-data каталог: {error}")),
+            }
+        }
+    };
+    HistoryStore::new(directory).protection_status()
 }
 
 #[tauri::command]
@@ -625,7 +820,9 @@ fn is_generation_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| {
-            name.starts_with(GENERATION_PREFIX) && name.ends_with(GENERATION_SUFFIX)
+            name.starts_with(GENERATION_PREFIX)
+                && (name.ends_with(GENERATION_SUFFIX)
+                    || name.ends_with(LEGACY_GENERATION_SUFFIX))
         })
 }
 
@@ -634,7 +831,9 @@ fn is_history_file(path: &Path) -> bool {
         .and_then(|name| name.to_str())
         .is_some_and(|name| {
             name.starts_with(GENERATION_PREFIX)
-                && (name.ends_with(GENERATION_SUFFIX) || name.ends_with(TEMP_SUFFIX))
+                && (name.ends_with(GENERATION_SUFFIX)
+                    || name.ends_with(LEGACY_GENERATION_SUFFIX)
+                    || name.ends_with(TEMP_SUFFIX))
         })
 }
 
@@ -730,6 +929,58 @@ mod tests {
         assert!(rewritten.persisted);
         assert_eq!(rewritten.reports.len(), 1);
         assert_eq!(rewritten.reports[0].id, "two");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn published_generation_is_dpapi_protected_and_round_trips() {
+        let temp = TempDir::new().unwrap();
+        let store = HistoryStore::new(temp.path().join("history"));
+        let saved = store.save_report(sample_report("secret-report"));
+        assert_eq!(saved.status, HistoryStorageStatus::Ready);
+        let generation = saved.generation.unwrap();
+        let raw = fs::read(store.directory.join(generation)).unwrap();
+        assert!(is_dpapi_payload(&raw));
+        assert!(!raw
+            .windows(b"secret-report".len())
+            .any(|window| window == b"secret-report"));
+        assert_eq!(
+            store.protection_status().status,
+            HistoryProtectionStatus::DpapiCurrentUser
+        );
+        assert_eq!(store.load().reports[0].id, "secret-report");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn plaintext_generation_is_migrated_and_removed_after_rewrite() {
+        let temp = TempDir::new().unwrap();
+        let directory = temp.path().join("history");
+        fs::create_dir_all(&directory).unwrap();
+        let legacy_path = directory.join(format!(
+            "{GENERATION_PREFIX}00000000000000000001-legacy{LEGACY_GENERATION_SUFFIX}"
+        ));
+        let envelope = HistoryEnvelope {
+            storage_version: HISTORY_STORAGE_VERSION,
+            report_schema_version: REPORT_SCHEMA_VERSION,
+            saved_at: Utc::now().to_rfc3339(),
+            reports: vec![sample_report("legacy")],
+        };
+        fs::write(&legacy_path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+        let store = HistoryStore::new(directory);
+        assert_eq!(store.load().reports[0].id, "legacy");
+        assert_eq!(
+            store.protection_status().status,
+            HistoryProtectionStatus::Plaintext
+        );
+        let rewritten = store.rewrite_all(vec![sample_report("legacy")]);
+        assert!(rewritten.persisted);
+        assert!(!legacy_path.exists());
+        assert_eq!(
+            store.protection_status().status,
+            HistoryProtectionStatus::DpapiCurrentUser
+        );
+        assert_eq!(store.load().reports[0].id, "legacy");
     }
 
     #[test]
