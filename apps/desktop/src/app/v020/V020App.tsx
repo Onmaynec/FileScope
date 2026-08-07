@@ -4,6 +4,7 @@ import {
   Home, Info, Menu, Search, Settings, ShieldCheck, Upload,
 } from 'lucide-react';
 import { AnalysisSettings } from '../../features/analysis/ui/AnalysisSettings';
+import { HistoryPrivacySettings } from '../../features/analysis/ui/HistoryPrivacySettings';
 import { AnalysisWorkspace } from '../../features/analysis/ui/AnalysisWorkspace';
 import { ReportHistory } from '../../features/analysis/ui/ReportHistory';
 import { loadAnalysisLimits, loadReports } from '../../features/analysis/model/analysis-storage';
@@ -135,7 +136,7 @@ function HomePage({ navigate, chooseFile }: { navigate: (page: Page) => void; ch
 }
 
 function SettingsPage({ limits, setLimits, theme, setTheme, closeBehavior, setCloseBehavior }: { limits: AnalysisLimits; setLimits: (limits: AnalysisLimits) => void; theme: 'system' | 'dark' | 'light'; setTheme: (theme: 'system' | 'dark' | 'light') => void; closeBehavior: 'tray' | 'quit'; setCloseBehavior: (value: 'tray' | 'quit') => void }) {
-  return <><PageHeader title="Настройки" text="Настройки интерфейса и защитных ограничений сохраняются локально." /><section className="card settings-v020"><h2>Интерфейс и окно</h2><div className="setting-row"><div><strong>Тема</strong><span>Системная, светлая или тёмная.</span></div><Select label="Тема приложения" value={theme} options={themeOptions} onChange={setTheme} /></div><div className="setting-row"><div><strong>При закрытии окна</strong><span>Крестик скрывает приложение в трей или полностью завершает процесс.</span></div><Select label="Поведение при закрытии" value={closeBehavior} options={closeOptions} onChange={setCloseBehavior} /></div><div className="setting-row"><div><strong>Версия приложения</strong><span>Единый build-time источник для интерфейса, отчётов и экспорта.</span></div><span className="badge neutral">{APP_VERSION}</span></div></section><AnalysisSettings value={limits} onChange={setLimits} /></>;
+  return <><PageHeader title="Настройки" text="Настройки интерфейса и защитных ограничений сохраняются локально." /><section className="card settings-v020"><h2>Интерфейс и окно</h2><div className="setting-row"><div><strong>Тема</strong><span>Системная, светлая или тёмная.</span></div><Select label="Тема приложения" value={theme} options={themeOptions} onChange={setTheme} /></div><div className="setting-row"><div><strong>При закрытии окна</strong><span>Крестик скрывает приложение в трей или полностью завершает процесс.</span></div><Select label="Поведение при закрытии" value={closeBehavior} options={closeOptions} onChange={setCloseBehavior} /></div><div className="setting-row"><div><strong>Версия приложения</strong><span>Единый build-time источник для интерфейса, отчётов и экспорта.</span></div><span className="badge neutral">{APP_VERSION}</span></div></section><HistoryPrivacySettings /><AnalysisSettings value={limits} onChange={setLimits} /></>;
 }
 
 function AboutPage() {
