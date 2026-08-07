@@ -25,12 +25,32 @@ export interface TauriReportHistorySnapshot extends ReportHistorySnapshot {
   backend: 'tauri';
 }
 
+export type HistoryProtectionStatus =
+  | 'dpapiCurrentUser'
+  | 'plaintext'
+  | 'mixed'
+  | 'empty'
+  | 'unavailable'
+  | 'notSupported';
+
+export interface HistoryProtectionSnapshot {
+  status: HistoryProtectionStatus;
+  dpapiGenerations: number;
+  plaintextGenerations: number;
+  message?: string;
+}
+
 export type HistoryCommandBridge = <T>(
   command: string,
   args?: Record<string, unknown>,
 ) => Promise<T>;
 
 export type HistoryPreferencesProvider = () => HistoryPreferences;
+
+type PersistentHistorySnapshot = ReportHistorySnapshot & {
+  backend?: 'tauri' | 'webview';
+  protectionVerified?: boolean;
+};
 
 const defaultBridge: HistoryCommandBridge = (command, args) => invoke(command, args);
 const defaultPreferencesProvider: HistoryPreferencesProvider = () => settingsService.load().history;
@@ -129,7 +149,7 @@ export class TauriReportHistoryRepository implements ReportHistoryRepository {
     };
   }
 
-  private async loadPersistent(policy: HistoryPreferences): Promise<ReportHistorySnapshot & { backend?: 'tauri' | 'webview' }> {
+  private async loadPersistent(policy: HistoryPreferences): Promise<PersistentHistorySnapshot> {
     const current = await this.readTauri('history_load');
     if (current.status !== 'empty') return current;
 
@@ -163,6 +183,7 @@ export class TauriReportHistoryRepository implements ReportHistoryRepository {
     if (migrated.persisted && (migrated.status === 'ready' || migrated.status === 'empty')) {
       return {
         ...migrated,
+        protectionVerified: true,
         message: `История перенесена из ${legacy.sourceKey ?? 'legacy WebView storage'} в Rust/Tauri storage. Privacy/retention policy применена до записи. Legacy source сохранён только для rollback; новые отчёты туда не записываются.`,
       };
     }
@@ -170,9 +191,9 @@ export class TauriReportHistoryRepository implements ReportHistoryRepository {
   }
 
   private async enforcePersistentPolicy(
-    snapshot: ReportHistorySnapshot & { backend?: 'tauri' | 'webview' },
+    snapshot: PersistentHistorySnapshot,
     policy: HistoryPreferences,
-  ): Promise<ReportHistorySnapshot & { backend?: 'tauri' | 'webview' }> {
+  ): Promise<PersistentHistorySnapshot> {
     if (snapshot.backend !== 'tauri' || snapshot.status !== 'ready') return snapshot;
 
     const minimized = snapshot.reports.map((report) =>
@@ -180,34 +201,47 @@ export class TauriReportHistoryRepository implements ReportHistoryRepository {
     const retained = policy.retention === 'session'
       ? minimized
       : applyRetention(minimized, policy.retention);
+    const reportsChanged = !sameReports(snapshot.reports, retained);
 
-    if (sameReports(snapshot.reports, retained)) return snapshot;
+    if (!reportsChanged && snapshot.protectionVerified) return snapshot;
+
+    let protection: HistoryProtectionSnapshot | undefined;
+    if (!reportsChanged) {
+      protection = await this.readProtectionStatus();
+      if (protection.status !== 'plaintext' && protection.status !== 'mixed') return snapshot;
+    }
+
     const rewritten = await this.readTauri('history_rewrite_all', { reports: retained });
     if (!rewritten.persisted) {
       return {
         ...snapshot,
         persisted: false,
-        message: rewritten.message ?? 'Privacy/retention policy не удалось применить к постоянной истории.',
+        message: rewritten.message ?? 'Privacy/retention/DPAPI policy не удалось применить к постоянной истории.',
       };
     }
+    const protectionMigration = protection?.status === 'plaintext' || protection?.status === 'mixed';
     return {
       ...rewritten,
+      protectionVerified: true,
       message: retained.length < snapshot.reports.length
         ? `Retention policy автоматически удалил ${snapshot.reports.length - retained.length} устаревших отчётов.`
-        : 'Privacy policy применена к ранее сохранённой истории.',
+        : protectionMigration
+          ? 'Legacy plaintext history безопасно переписана в Windows DPAPI current-user storage.'
+          : 'Privacy policy применена к ранее сохранённой истории.',
     };
   }
 
   private combineWithSession(
-    persistent: ReportHistorySnapshot & { backend?: 'tauri' | 'webview' },
+    persistent: PersistentHistorySnapshot,
     policy: HistoryPreferences,
     extraMessage?: string,
   ): ReportHistorySnapshot & { backend?: 'tauri' | 'webview'; sizeBytes?: number; generation?: string; sessionReportCount?: number } {
     const reports = mergeReports(this.sessionReports, persistent.reports);
     const sessionReportCount = this.sessionReports.length;
     const message = [persistent.message, extraMessage].filter(Boolean).join(' ');
+    const { protectionVerified: _protectionVerified, ...publicPersistent } = persistent;
     return {
-      ...persistent,
+      ...publicPersistent,
       reports,
       status: reports.length ? 'ready' : persistent.status,
       persisted: sessionReportCount === 0 && persistent.persisted,
@@ -238,6 +272,24 @@ export class TauriReportHistoryRepository implements ReportHistoryRepository {
       };
     }
   }
+
+  private readProtectionStatus(): Promise<HistoryProtectionSnapshot> {
+    return readProtectionStatus(this.bridge);
+  }
+}
+
+export async function inspectTauriHistoryProtection(
+  bridge: HistoryCommandBridge = defaultBridge,
+): Promise<HistoryProtectionSnapshot> {
+  if (bridge === defaultBridge && !isTauriRuntime()) {
+    return {
+      status: 'notSupported',
+      dpapiGenerations: 0,
+      plaintextGenerations: 0,
+      message: 'Windows DPAPI status доступен только в Tauri desktop runtime.',
+    };
+  }
+  return readProtectionStatus(bridge);
 }
 
 export function createProductionReportHistoryRepository(): ReportHistoryRepository {
@@ -249,6 +301,19 @@ export function createProductionReportHistoryRepository(): ReportHistoryReposito
 export function isTauriRuntime(): boolean {
   return typeof globalThis !== 'undefined'
     && '__TAURI_INTERNALS__' in (globalThis as unknown as Record<string, unknown>);
+}
+
+async function readProtectionStatus(bridge: HistoryCommandBridge): Promise<HistoryProtectionSnapshot> {
+  try {
+    return await bridge<HistoryProtectionSnapshot>('history_protection_status');
+  } catch (error) {
+    return {
+      status: 'unavailable',
+      dpapiGenerations: 0,
+      plaintextGenerations: 0,
+      message: `Не удалось получить Windows DPAPI status: ${errorMessage(error)}`,
+    };
+  }
 }
 
 function privacyPolicy(preferences: HistoryPreferences): HistoryPrivacyPolicy {
