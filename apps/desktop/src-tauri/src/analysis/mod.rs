@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use tauri::State;
 
 pub use jobs::{AnalysisFailure, JobRegistry};
-pub use types::{AnalysisLimits, AnalysisReport};
+pub use types::{AnalysisLimits, AnalysisReport, REPORT_SCHEMA_VERSION};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
