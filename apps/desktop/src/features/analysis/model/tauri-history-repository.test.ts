@@ -10,9 +10,7 @@ import {
 } from './tauri-history-repository';
 import type { AnalysisReport } from './types';
 
-beforeEach(() => {
-  localStorage.clear();
-});
+beforeEach(() => installMemoryStorage());
 
 describe('Tauri report history repository v0.4.0', () => {
   it('мигрирует legacy envelope в Rust storage без перезаписи source и минимизирует данные', async () => {
@@ -184,4 +182,17 @@ function sampleUrlReport(id: string): AnalysisReport {
     isDemo: false,
     limitations: [],
   };
+}
+
+function installMemoryStorage(): void {
+  const values = new Map<string, string>();
+  const storage: Storage = {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => { values.delete(key); },
+    setItem: (key, value) => { values.set(key, value); },
+  };
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
 }
