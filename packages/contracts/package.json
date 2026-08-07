@@ -1,7 +1,7 @@
 {
   "name": "@filescope/contracts",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Shared FileScope analysis contracts",
   "author": "Veilbyte",
   "license": "SEE LICENSE IN ../../LICENSE",
