@@ -111,7 +111,7 @@ pub fn file_format_and_pe(data: &[u8]) {
     }
 
     for import in pe.imports.iter().take(MAXIMUM_FUZZ_PE_IMPORTS) {
-        let _ = (import.dll, import.name);
+        let _ = format!("{}!{}", import.dll, import.name);
     }
     let _ = (pe.entry, pe.is_64);
 }
