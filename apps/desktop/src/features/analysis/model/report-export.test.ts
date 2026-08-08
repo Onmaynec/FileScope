@@ -1,37 +1,62 @@
 import { describe, expect, it } from 'vitest';
 import { renderReportHtml } from './report-export';
-import type { AnalysisReport } from './types';
+import { currentReportSchemaVersion, type AnalysisReport } from './types';
 
-const report: AnalysisReport = {
-  schemaVersion: 1,
-  appVersion: '0.3.3',
-  analyzerVersion: '1.1',
-  ruleSetVersion: '2026.08.06.1',
-  createdBy: { platform: 'windows', architecture: 'x86_64', runtime: 'tauri-desktop' },
-  analysisCompleteness: 'complete',
-  id: 'test-report',
-  objectKind: 'file',
-  target: 'C:/test/<script>.exe',
-  displayName: '<script>alert(1)</script>.exe',
-  startedAt: '2026-08-05T00:00:00.000Z',
-  completedAt: '2026-08-05T00:00:00.100Z',
-  durationMs: 100,
-  riskLevel: 'caution',
-  riskScore: 20,
-  indicators: [],
-  metadata: {},
-  isDemo: false,
-  limitations: ['Тестовое ограничение'],
-};
+const dangerousPayloads = [
+  'FS-XSS-<script>alert("filescope")</script>',
+  'FS-IMG-<img src=x onerror="alert(1)">',
+  'FS-SVG-</title><svg onload="alert(2)">',
+  'FS-ENTITIES-<&>"\'',
+  'FS-CLOSE-</style></head><body onload="alert(3)">',
+];
 
 describe('HTML-экспорт', () => {
-  it('экранирует пользовательские значения и показывает версии', () => {
-    const html = renderReportHtml(report, 'abc123');
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;.exe');
-    expect(html).not.toContain('<script>alert(1)</script>');
-    expect(html).toContain('FileScope v0.3.3');
-    expect(html).toContain('Schema:</strong> 1');
-    expect(html).toContain('abc123');
+  it.each(dangerousPayloads)('экранирует пользовательский payload %#', (payload) => {
+    const html = renderReportHtml(sampleReport(payload), payload);
+
+    expect(html).not.toContain(payload);
+    expect(html).not.toMatch(/<script\b/i);
+    expect(html).not.toMatch(/<img\b/i);
+    expect(html).not.toMatch(/<svg\b/i);
+    expect(html).not.toMatch(/<body\s+onload=/i);
+    expect(html).toContain('&lt;');
+    expect(html).toContain('&gt;');
     expect(html).toContain('не подписан цифровой подписью');
   });
 });
+
+function sampleReport(payload: string): AnalysisReport {
+  return {
+    schemaVersion: currentReportSchemaVersion,
+    appVersion: payload,
+    analyzerVersion: payload,
+    ruleSetVersion: payload,
+    createdBy: { platform: payload, architecture: payload, runtime: payload },
+    analysisCompleteness: 'complete',
+    id: 'export-hardening',
+    objectKind: 'file',
+    target: payload,
+    displayName: payload,
+    startedAt: '2026-08-08T00:00:00Z',
+    completedAt: '2026-08-08T00:00:01Z',
+    durationMs: 1000,
+    sha256: payload,
+    detectedType: payload,
+    sizeBytes: 123,
+    riskLevel: 'caution',
+    riskScore: 7,
+    indicators: [{
+      id: 'export.escape',
+      title: payload,
+      description: payload,
+      category: payload,
+      severity: 'low',
+      score: 7,
+      evidence: [payload],
+      recommendation: payload,
+    }],
+    metadata: { payload },
+    isDemo: false,
+    limitations: [payload],
+  };
+}
