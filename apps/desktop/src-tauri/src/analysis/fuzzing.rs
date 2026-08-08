@@ -107,7 +107,11 @@ pub fn file_format_and_pe(data: &[u8]) {
             .saturating_add(section.size_of_raw_data as usize)
             .min(data.len());
         let section_data = if start < end { &data[start..end] } else { &[] };
-        let _ = (section.name().ok(), section_data.len(), section.virtual_size);
+        let _ = (
+            section.name().ok(),
+            section_data.len(),
+            section.virtual_size,
+        );
     }
 
     for import in pe.imports.iter().take(MAXIMUM_FUZZ_PE_IMPORTS) {
