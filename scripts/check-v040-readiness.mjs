@@ -84,6 +84,17 @@ if (existsSync(historyRepositoryPath)) {
   }
 }
 
+const forbiddenFuzzSideEffects = [
+  'std::process::Command',
+  'reqwest::',
+  'std::net::TcpStream',
+  'std::net::UdpSocket',
+  'std::fs::write',
+  'std::fs::remove_file',
+  'std::fs::remove_dir',
+  'OpenOptions::new',
+  'File::create',
+];
 const fuzzTargetsDirectory = join(root, 'apps/desktop/src-tauri/fuzz/fuzz_targets');
 if (existsSync(fuzzTargetsDirectory)) {
   const targets = readdirSync(fuzzTargetsDirectory).filter((name) => name.endsWith('.rs'));
@@ -91,9 +102,17 @@ if (existsSync(fuzzTargetsDirectory)) {
   for (const name of targets) {
     const target = name.replace(/\.rs$/, '');
     const text = readFileSync(join(fuzzTargetsDirectory, name), 'utf8');
-    for (const forbidden of ['std::process::Command', 'reqwest::', 'std::fs::write', 'File::create']) {
+    for (const forbidden of forbiddenFuzzSideEffects) {
       if (text.includes(forbidden)) errors.push(`${target}: forbidden fuzz side effect ${forbidden}`);
     }
+  }
+}
+
+const fuzzEntryPointsPath = join(root, 'apps/desktop/src-tauri/src/analysis/fuzzing.rs');
+if (existsSync(fuzzEntryPointsPath)) {
+  const fuzzEntryPoints = readFileSync(fuzzEntryPointsPath, 'utf8');
+  for (const forbidden of forbiddenFuzzSideEffects) {
+    if (fuzzEntryPoints.includes(forbidden)) errors.push(`analysis/fuzzing.rs: forbidden fuzz side effect ${forbidden}`);
   }
 }
 
