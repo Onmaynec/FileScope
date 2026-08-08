@@ -84,12 +84,24 @@ if (existsSync(historyRepositoryPath)) {
   }
 }
 
-for (const target of ['report_deserialization', 'passive_url', 'rule_engine']) {
-  const path = join(root, `apps/desktop/src-tauri/fuzz/fuzz_targets/${target}.rs`);
-  if (!existsSync(path)) continue;
-  const text = readFileSync(path, 'utf8');
-  for (const forbidden of ['std::process::Command', 'reqwest::', 'std::fs::write', 'File::create']) {
-    if (text.includes(forbidden)) errors.push(`${target}: forbidden fuzz side effect ${forbidden}`);
+const fuzzTargetsDirectory = join(root, 'apps/desktop/src-tauri/fuzz/fuzz_targets');
+if (existsSync(fuzzTargetsDirectory)) {
+  const targets = readdirSync(fuzzTargetsDirectory).filter((name) => name.endsWith('.rs'));
+  if (targets.length < 5) errors.push(`expected at least 5 fuzz targets, found ${targets.length}`);
+  for (const name of targets) {
+    const target = name.replace(/\.rs$/, '');
+    const text = readFileSync(join(fuzzTargetsDirectory, name), 'utf8');
+    for (const forbidden of ['std::process::Command', 'reqwest::', 'std::fs::write', 'File::create']) {
+      if (text.includes(forbidden)) errors.push(`${target}: forbidden fuzz side effect ${forbidden}`);
+    }
+  }
+}
+
+const fuzzManifestPath = join(root, 'apps/desktop/src-tauri/fuzz/Cargo.toml');
+if (existsSync(fuzzManifestPath)) {
+  const manifest = readFileSync(fuzzManifestPath, 'utf8');
+  for (const target of ['report_deserialization', 'passive_url', 'rule_engine', 'file_format_and_pe', 'zip_metadata']) {
+    if (!manifest.includes(`name = "${target}"`)) errors.push(`fuzz Cargo.toml missing target ${target}`);
   }
 }
 
@@ -100,6 +112,12 @@ if (existsSync(fuzzWorkflowPath)) {
   if (/contents:\s*write|environment:\s*production|secrets\./.test(workflow)) errors.push('security-fuzz workflow has forbidden privilege/secrets');
   const retention = [...workflow.matchAll(/retention-days:\s*(\d+)/g)].map((match) => Number(match[1]));
   if (retention.some((days) => days > 3)) errors.push('fuzz crash retention must be <= 3 days');
+  for (const target of ['report_deserialization', 'passive_url', 'rule_engine', 'file_format_and_pe', 'zip_metadata']) {
+    if (!workflow.includes(`cargo fuzz run ${target}`)) errors.push(`security-fuzz workflow missing target ${target}`);
+  }
+  if (!workflow.includes('GITHUB_EVENT_NAME') || !workflow.includes('seconds=180')) {
+    errors.push('security-fuzz workflow must keep an extended scheduled/manual fuzz budget');
+  }
 }
 
 for (const workflow of walk(join(root, '.github/workflows'))) {
