@@ -22,7 +22,7 @@ jobs:
   fuzz-smoke:
     name: Bounded cargo-fuzz smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Получить исходный код
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,17 +50,35 @@ jobs:
       - name: Установить cargo-fuzz
         run: cargo install cargo-fuzz --version 0.13.2 --locked
 
+      - name: Выбрать bounded budget
+        id: budget
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "seconds=20" >> "$GITHUB_OUTPUT"
+          else
+            echo "seconds=180" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Проверить десериализацию отчётов
         working-directory: apps/desktop/src-tauri
-        run: cargo fuzz run report_deserialization -- -max_total_time=20 -max_len=262144 -rss_limit_mb=1024
+        run: cargo fuzz run report_deserialization -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=262144 -rss_limit_mb=1024
 
       - name: Проверить пассивный URL-анализ
         working-directory: apps/desktop/src-tauri
-        run: cargo fuzz run passive_url -- -max_total_time=20 -max_len=4096 -rss_limit_mb=1024
+        run: cargo fuzz run passive_url -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=4096 -rss_limit_mb=1024
 
       - name: Проверить Rule Engine
         working-directory: apps/desktop/src-tauri
-        run: cargo fuzz run rule_engine -- -max_total_time=20 -max_len=65536 -rss_limit_mb=1024
+        run: cargo fuzz run rule_engine -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=65536 -rss_limit_mb=1024
+
+      - name: Проверить magic/type detection и PE parser
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run file_format_and_pe -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=1048576 -rss_limit_mb=1024
+
+      - name: Проверить ZIP metadata и path handling
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run zip_metadata -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=2097152 -rss_limit_mb=1024
 
       - name: Сохранить crash inputs только при ошибке
         if: failure()
