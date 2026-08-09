@@ -4,8 +4,8 @@ use serde_json::Value;
 use super::jobs::AnalysisFailure;
 
 pub const REPORT_SCHEMA_VERSION: u16 = 1;
-pub const ANALYZER_VERSION: &str = "1.1";
-pub const RULE_SET_VERSION: &str = "2026.08.06.1";
+pub const ANALYZER_VERSION: &str = "1.2";
+pub const RULE_SET_VERSION: &str = "2026.08.09.1";
 
 const MIB: u64 = 1024 * 1024;
 const GIB: u64 = 1024 * 1024 * 1024;
@@ -133,6 +133,26 @@ pub struct ArchiveEntry {
     pub is_executable: bool,
     pub is_archive: bool,
     pub suspicious_path: bool,
+    #[serde(default)]
+    pub windows_path_key: String,
+    #[serde(default)]
+    pub is_encrypted: bool,
+    #[serde(default)]
+    pub is_symlink: bool,
+    #[serde(default)]
+    pub is_special: bool,
+    #[serde(default)]
+    pub has_ads: bool,
+    #[serde(default)]
+    pub has_reserved_name: bool,
+    #[serde(default)]
+    pub has_trailing_dot_or_space: bool,
+    #[serde(default)]
+    pub has_control_or_bidi: bool,
+    #[serde(default)]
+    pub path_collision: bool,
+    #[serde(default)]
+    pub file_directory_collision: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -150,6 +170,28 @@ pub struct ArchiveAnalysis {
     pub nested_archives: usize,
     pub executable_entries: usize,
     pub suspicious_paths: usize,
+    #[serde(default)]
+    pub entries_scanned: usize,
+    #[serde(default)]
+    pub summary_complete: bool,
+    #[serde(default)]
+    pub encrypted_entries: usize,
+    #[serde(default)]
+    pub symlink_entries: usize,
+    #[serde(default)]
+    pub special_entries: usize,
+    #[serde(default)]
+    pub ads_entries: usize,
+    #[serde(default)]
+    pub reserved_name_entries: usize,
+    #[serde(default)]
+    pub trailing_dot_or_space_entries: usize,
+    #[serde(default)]
+    pub control_or_bidi_entries: usize,
+    #[serde(default)]
+    pub path_collisions: usize,
+    #[serde(default)]
+    pub file_directory_collisions: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
