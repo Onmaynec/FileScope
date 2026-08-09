@@ -1,7 +1,7 @@
 {
   "name": "filescope",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "FileScope desktop application by Veilbyte",
   "author": "Veilbyte",
   "license": "SEE LICENSE IN LICENSE",
