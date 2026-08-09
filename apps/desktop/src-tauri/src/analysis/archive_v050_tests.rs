@@ -18,15 +18,7 @@ fn encrypted_flag_is_reported_as_uncertainty_without_threat_score() {
     write_single_file_zip(&path, b"harmless text");
     set_first_entry_encrypted_flags(&path);
 
-    let registry = JobRegistry::default();
-    let token = registry.start("zip-encrypted-metadata", 30_000).unwrap();
-    let report = analyze_zip(
-        path.to_string_lossy().to_string(),
-        AnalysisLimits::default(),
-        &token,
-    )
-    .unwrap();
-
+    let report = analyze_fixture(&path, "zip-encrypted-metadata");
     let archive = report.archive.as_ref().unwrap();
     assert_eq!(archive.encrypted_entries, 1);
     assert!(archive.entries[0].is_encrypted);
@@ -42,6 +34,90 @@ fn encrypted_flag_is_reported_as_uncertainty_without_threat_score() {
     assert_eq!(indicator.score, 0);
     assert_eq!(report.metadata["contentExtractedToDisk"], false);
     assert_eq!(report.metadata["hashAndStructureSameHandle"], true);
+}
+
+#[test]
+fn duplicate_central_directory_names_are_marked_as_windows_collisions() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("duplicate-names.zip");
+    let writer_file = File::create(&path).unwrap();
+    let mut writer = ZipWriter::new(writer_file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Stored);
+    writer.start_file("docs/readme.txt", options).unwrap();
+    writer.write_all(b"first").unwrap();
+    writer.start_file("docs/readme.txt", options).unwrap();
+    writer.write_all(b"second").unwrap();
+    writer.finish().unwrap();
+
+    let report = analyze_fixture(&path, "zip-duplicate-names");
+    let archive = report.archive.as_ref().unwrap();
+    assert_eq!(archive.total_entries, 2);
+    assert_eq!(archive.path_collisions, 2);
+    assert!(archive.entries.iter().all(|entry| entry.path_collision));
+    assert!(report
+        .indicators
+        .iter()
+        .any(|item| item.id == "archive.path.windows-collision"));
+}
+
+#[test]
+fn file_and_directory_with_same_windows_key_are_marked_as_type_collision() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("file-directory-collision.zip");
+    let writer_file = File::create(&path).unwrap();
+    let mut writer = ZipWriter::new(writer_file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Stored);
+    writer.add_directory("config/", options).unwrap();
+    writer.start_file("CONFIG", options).unwrap();
+    writer.write_all(b"file").unwrap();
+    writer.finish().unwrap();
+
+    let report = analyze_fixture(&path, "zip-file-directory-collision");
+    let archive = report.archive.as_ref().unwrap();
+    assert_eq!(archive.path_collisions, 2);
+    assert_eq!(archive.file_directory_collisions, 2);
+    assert!(archive
+        .entries
+        .iter()
+        .all(|entry| entry.file_directory_collision));
+    assert!(report
+        .indicators
+        .iter()
+        .any(|item| item.id == "archive.path.file-directory-collision"));
+}
+
+#[test]
+fn symlink_entry_is_classified_without_following_or_extracting_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("symlink-entry.zip");
+    let writer_file = File::create(&path).unwrap();
+    let mut writer = ZipWriter::new(writer_file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Stored);
+    writer
+        .add_symlink("links/payload", "../payload.exe", options)
+        .unwrap();
+    writer.finish().unwrap();
+
+    let report = analyze_fixture(&path, "zip-symlink-entry");
+    let archive = report.archive.as_ref().unwrap();
+    assert_eq!(archive.symlink_entries, 1);
+    assert!(archive.entries[0].is_symlink);
+    assert_eq!(report.metadata["contentExtractedToDisk"], false);
+    assert!(report
+        .indicators
+        .iter()
+        .any(|item| item.id == "archive.entry.symlink"));
+}
+
+fn analyze_fixture(path: &Path, job_id: &str) -> super::types::AnalysisReport {
+    let registry = JobRegistry::default();
+    let token = registry.start(job_id, 30_000).unwrap();
+    analyze_zip(
+        path.to_string_lossy().to_string(),
+        AnalysisLimits::default(),
+        &token,
+    )
+    .unwrap()
 }
 
 fn write_single_file_zip(path: &Path, contents: &[u8]) {
