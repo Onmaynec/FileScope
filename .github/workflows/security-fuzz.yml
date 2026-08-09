@@ -116,7 +116,7 @@ jobs:
           name: FileScope-fuzz-evidence-${{ github.run_id }}
           path: fuzz-evidence/run.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
 
       - name: Сохранить crash inputs только при ошибке
         if: failure()
