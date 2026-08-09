@@ -16,7 +16,9 @@ const required = [
   'apps/desktop/src-tauri/src/analysis/properties.rs',
   'apps/desktop/src-tauri/src/analysis/fuzzing.rs',
   'apps/desktop/src-tauri/fuzz/Cargo.toml',
+  '.github/workflows/ci.yml',
   '.github/workflows/security-fuzz.yml',
+  'scripts/windows-v040-history-qa.ps1',
   'docs/architecture/history-storage-migration-v040.md',
   'docs/architecture/history-storage-protection-v040.md',
   'docs/security/fuzzing-policy.md',
@@ -118,6 +120,42 @@ if (existsSync(historyRepositoryPath)) {
   const repository = readFileSync(historyRepositoryPath, 'utf8');
   for (const requiredLiteral of ['history_protection_status', 'history_rewrite_all', 'inspectTauriHistoryProtection']) {
     if (!repository.includes(requiredLiteral)) errors.push(`tauri-history-repository.ts missing ${requiredLiteral}`);
+  }
+}
+
+const windowsHistoryQaPath = join(root, 'scripts/windows-v040-history-qa.ps1');
+if (existsSync(windowsHistoryQaPath)) {
+  const qa = readFileSync(windowsHistoryQaPath, 'utf8');
+  for (const requiredLiteral of [
+    "'SelfTest'",
+    "'AssertCurrentUser'",
+    "'AssertForeignUserRejected'",
+    "'AssertPortable'",
+    "'AssertRestartStable'",
+    "'AssertCleared'",
+    'FSDPAPI1',
+    'ProtectedData',
+    'DataProtectionScope]::CurrentUser',
+    'Get-FileHash',
+    'reports-v2-',
+    'storageVersion',
+    'reportSchemaVersion',
+  ]) {
+    if (!qa.includes(requiredLiteral)) errors.push(`windows-v040-history-qa.ps1 missing ${requiredLiteral}`);
+  }
+  if (/Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|System\.Net\.WebClient/.test(qa)) {
+    errors.push('windows-v040-history-qa.ps1 must remain offline and must not perform network requests');
+  }
+}
+
+const ciWorkflowPath = join(root, '.github/workflows/ci.yml');
+if (existsSync(ciWorkflowPath)) {
+  const ci = readFileSync(ciWorkflowPath, 'utf8');
+  if (!ci.includes('windows-v040-history-qa.ps1 -Mode SelfTest')) {
+    errors.push('ci.yml must execute Windows history QA harness SelfTest');
+  }
+  if (!ci.includes('shell: pwsh')) {
+    errors.push('ci.yml must execute the Windows history QA harness under pwsh');
   }
 }
 
