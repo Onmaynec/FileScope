@@ -5,6 +5,7 @@ const root = process.cwd();
 const required = [
   'apps/desktop/src/features/analysis/model/history-repository.ts',
   'apps/desktop/src/features/analysis/model/tauri-history-repository.ts',
+  'apps/desktop/src/features/analysis/model/tauri-history-migration-restart.test.ts',
   'apps/desktop/src/features/analysis/model/report-migration.ts',
   'apps/desktop/src/features/analysis/model/history-privacy.ts',
   'apps/desktop/src/features/analysis/ui/HistoryPrivacySettings.tsx',
@@ -89,6 +90,26 @@ if (existsSync(historyFaultTestsPath)) {
     'TEMP_SUFFIX',
   ]) {
     if (!tests.includes(requiredLiteral)) errors.push(`history_storage_faults.rs missing ${requiredLiteral}`);
+  }
+}
+
+const migrationRestartTestsPath = join(
+  root,
+  'apps/desktop/src/features/analysis/model/tauri-history-migration-restart.test.ts',
+);
+if (existsSync(migrationRestartTestsPath)) {
+  const tests = readFileSync(migrationRestartTestsPath, 'utf8');
+  for (const requiredLiteral of [
+    'successful migration is idempotent across restart and preserves rollback source',
+    'failed publication before commit is retryable after restart without changing legacy source',
+    'lost IPC response after committed migration recovers on restart without second replace',
+    'commitThenLoseResponse',
+    'history_replace_all',
+    'inspectLegacyHistoryForMigration',
+  ]) {
+    if (!tests.includes(requiredLiteral)) {
+      errors.push(`tauri-history-migration-restart.test.ts missing ${requiredLiteral}`);
+    }
   }
 }
 
