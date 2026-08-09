@@ -80,6 +80,9 @@ export interface UrlAnalysis {
 
 export interface ArchiveEntry {
   path: string;
+  displayPath?: string;
+  rawNameHex?: string;
+  pathNormalizationChanged?: boolean;
   compressedSize: number;
   uncompressedSize: number;
   depth: number;
@@ -120,6 +123,7 @@ export interface ArchiveAnalysis {
   reservedNameEntries?: number;
   trailingDotOrSpaceEntries?: number;
   controlOrBidiEntries?: number;
+  normalizationChangedEntries?: number;
   pathCollisions?: number;
   fileDirectoryCollisions?: number;
 }
