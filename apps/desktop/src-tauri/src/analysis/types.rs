@@ -126,6 +126,12 @@ pub struct UrlAnalysis {
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveEntry {
     pub path: String,
+    #[serde(default)]
+    pub display_path: String,
+    #[serde(default)]
+    pub raw_name_hex: String,
+    #[serde(default)]
+    pub path_normalization_changed: bool,
     pub compressed_size: u64,
     pub uncompressed_size: u64,
     pub depth: usize,
