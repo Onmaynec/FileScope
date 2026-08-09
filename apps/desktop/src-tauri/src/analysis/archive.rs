@@ -121,7 +121,9 @@ pub fn analyze_zip(
     for index in 0..scan_count {
         token.checkpoint()?;
         let entry = archive.by_index_raw(index).map_err(|error| {
-            AnalysisFailure::parse(format!("Не удалось прочитать metadata записи ZIP #{index}: {error}"))
+            AnalysisFailure::parse(format!(
+                "Не удалось прочитать metadata записи ZIP #{index}: {error}"
+            ))
         })?;
         let assessment = assess_archive_path(entry.name(), entry.enclosed_name().is_some());
         let name = assessment.normalized_path;
@@ -208,12 +210,18 @@ pub fn analyze_zip(
     let symlink_entries = entries.iter().filter(|entry| entry.is_symlink).count();
     let special_entries = entries.iter().filter(|entry| entry.is_special).count();
     let ads_entries = entries.iter().filter(|entry| entry.has_ads).count();
-    let reserved_name_entries = entries.iter().filter(|entry| entry.has_reserved_name).count();
+    let reserved_name_entries = entries
+        .iter()
+        .filter(|entry| entry.has_reserved_name)
+        .count();
     let trailing_dot_or_space_entries = entries
         .iter()
         .filter(|entry| entry.has_trailing_dot_or_space)
         .count();
-    let control_or_bidi_entries = entries.iter().filter(|entry| entry.has_control_or_bidi).count();
+    let control_or_bidi_entries = entries
+        .iter()
+        .filter(|entry| entry.has_control_or_bidi)
+        .count();
     let path_collisions = entries.iter().filter(|entry| entry.path_collision).count();
     let file_directory_collisions = entries
         .iter()
@@ -857,7 +865,10 @@ mod tests {
         assert_eq!(archive.ads_entries, 1);
         assert_eq!(archive.reserved_name_entries, 1);
         assert!(archive.path_collisions >= 2);
-        assert!(report.indicators.iter().any(|item| item.id == "archive.path.ads"));
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| item.id == "archive.path.ads"));
         assert!(report
             .indicators
             .iter()
