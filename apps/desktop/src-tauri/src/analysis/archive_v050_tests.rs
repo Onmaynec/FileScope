@@ -1,6 +1,5 @@
 use std::{fs, fs::File, io::Write, path::Path};
 
-use tempfile::TempDir;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 use super::{
@@ -45,15 +44,13 @@ fn encrypted_flag_is_reported_as_uncertainty_without_threat_score() {
     assert_eq!(report.metadata["hashAndStructureSameHandle"], true);
 }
 
-fn write_single_file_zip(path: &Path, contents: &[u8]) -> TempDir {
-    let directory = tempfile::tempdir().unwrap();
+fn write_single_file_zip(path: &Path, contents: &[u8]) {
     let writer_file = File::create(path).unwrap();
     let mut writer = ZipWriter::new(writer_file);
     let options = FileOptions::default().compression_method(CompressionMethod::Stored);
     writer.start_file("docs/readme.txt", options).unwrap();
     writer.write_all(contents).unwrap();
     writer.finish().unwrap();
-    directory
 }
 
 fn set_first_entry_encrypted_flags(path: &Path) {
