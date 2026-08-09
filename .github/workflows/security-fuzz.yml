@@ -80,6 +80,44 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo fuzz run zip_metadata -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=2097152 -rss_limit_mb=1024
 
+      - name: Сформировать evidence успешного extended fuzz
+        if: success() && github.event_name != 'pull_request'
+        shell: bash
+        env:
+          FUZZ_SECONDS: ${{ steps.budget.outputs.seconds }}
+        run: |
+          set -euo pipefail
+          mkdir -p fuzz-evidence
+          cat > fuzz-evidence/run.json <<EOF
+          {
+            "schemaVersion": 1,
+            "runId": ${GITHUB_RUN_ID},
+            "runAttempt": ${GITHUB_RUN_ATTEMPT},
+            "event": "${GITHUB_EVENT_NAME}",
+            "headSha": "${GITHUB_SHA}",
+            "secondsPerTarget": ${FUZZ_SECONDS},
+            "conclusion": "success",
+            "crashArtifacts": 0,
+            "targets": [
+              "report_deserialization",
+              "passive_url",
+              "rule_engine",
+              "file_format_and_pe",
+              "zip_metadata"
+            ]
+          }
+          EOF
+          cat fuzz-evidence/run.json
+
+      - name: Сохранить metadata успешного extended fuzz
+        if: success() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FileScope-fuzz-evidence-${{ github.run_id }}
+          path: fuzz-evidence/run.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Сохранить crash inputs только при ошибке
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
