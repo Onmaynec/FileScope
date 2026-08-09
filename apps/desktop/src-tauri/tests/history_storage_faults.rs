@@ -94,7 +94,7 @@ mod history_storage {
             let sentinel = b"do-not-overwrite";
             fs::write(&blocked_app_data, sentinel).unwrap();
 
-            let store = HistoryStore::new(blocked_app_data.join("history"));
+            let store = HistoryStore::new(blocked_app_data.clone());
             let loaded = store.load();
             assert_eq!(loaded.status, HistoryStorageStatus::Unavailable);
             assert!(!loaded.persisted);
