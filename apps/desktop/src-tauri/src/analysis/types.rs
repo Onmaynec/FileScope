@@ -195,6 +195,8 @@ pub struct ArchiveAnalysis {
     #[serde(default)]
     pub control_or_bidi_entries: usize,
     #[serde(default)]
+    pub normalization_changed_entries: usize,
+    #[serde(default)]
     pub path_collisions: usize,
     #[serde(default)]
     pub file_directory_collisions: usize,
