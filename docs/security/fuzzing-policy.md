@@ -20,7 +20,7 @@ HTML export escaping закреплён отдельным frontend regression-�
 
 Pull request smoke использует короткий bounded budget 20 секунд на target. Scheduled и ручной запуск используют расширенный bounded budget 180 секунд на target. Каждый target также ограничен per-input timeout, максимальным размером input и RSS; весь job имеет общий timeout.
 
-Workflow работает с `contents: read`, без secrets и production Environment. Crash artifacts создаются только при ошибке и хранятся не более трёх дней. Readiness gate автоматически проверяет все `.rs` targets в `fuzz/fuzz_targets`, их регистрацию в Cargo manifest, присутствие обязательных targets в workflow и отсутствие запрещённых side effects в target wrappers.
+Workflow работает с `contents: read`, без secrets и production Environment. Все fuzz artifacts имеют retention не более трёх дней. Readiness gate автоматически проверяет все `.rs` targets в `fuzz/fuzz_targets`, их регистрацию в Cargo manifest, присутствие обязательных targets в workflow и отсутствие запрещённых side effects в target wrappers.
 
 ## Evidence длительных запусков
 
@@ -34,7 +34,7 @@ Workflow работает с `contents: read`, без secrets и production Envi
 - `crashArtifacts=0`;
 - точным набором всех пяти fuzz targets.
 
-Metadata artifact не содержит corpus, crash input, пользовательские данные или секреты и может храниться 30 дней. Это отдельный класс artifact: ограничение ≤3 дней относится только к crash inputs.
+Metadata artifact не содержит corpus, crash input, пользовательские данные или секреты и, как и остальные fuzz artifacts, хранится не более трёх дней. После проверки его значения переносятся в постоянный structured release evidence; сам transient artifact не является единственным источником release-доказательства.
 
 Финальный release evidence для v0.4.0 требует минимум два независимых успешных extended run с budget не менее 180 секунд на каждый target. Хотя бы один из них обязан быть ручным `workflow_dispatch` на точном `validatedHeadSha` release candidate. PR smoke run не считается extended evidence независимо от количества накопившихся PR запусков.
 
