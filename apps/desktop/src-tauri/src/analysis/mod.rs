@@ -1,5 +1,7 @@
 mod archive;
 mod archive_paths;
+#[cfg(test)]
+mod archive_v050_tests;
 mod file;
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
