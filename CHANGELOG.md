@@ -4,6 +4,58 @@
 
 ## [Не выпущено]
 
+## [0.5.0] — в разработке
+
+### Добавлено
+
+- Windows-aware классификация ZIP-путей: ADS/colon semantics, reserved device names, trailing dot/space, control/bidi и case-insensitive comparison key;
+- обнаружение duplicate path collisions и конфликтов «файл/каталог» без извлечения содержимого;
+- классификация encrypted, symlink и special Unix-mode entries только по metadata;
+- сохранение `displayPath`, нормализованного `path` и исходных bytes имени ZIP в `rawNameHex` для forensic-сопоставления;
+- явные `entriesScanned`, `summaryComplete` и `unreadableEntries` для честной оценки полноты структурного анализа;
+- synthetic regressions для encrypted metadata, duplicate names, file/directory collisions, symlink и повреждённого local header;
+- ZIP fuzz target использует production Windows-aware path classifier и raw metadata traversal.
+
+### Изменено
+
+- encrypted entry считается неопределённостью анализа и создаёт только информационный индикатор с `Risk Score +0`;
+- повреждение metadata отдельной ZIP-записи больше не уничтожает весь отчёт: доступная часть сохраняется со статусом `Partial`;
+- UI показывает исходное и нормализованное имя, счётчики encrypted/symlink/collisions/unreadable и отдельно объясняет частичную ZIP-сводку;
+- analyzer/rule-set для этого development slice идентифицируются как `1.2` / `2026.08.09.1`.
+
+### Безопасность
+
+- ZIP по-прежнему не извлекается на диск, содержимое не запускается и сетевые запросы не выполняются;
+- SHA-256, central-directory traversal и local-header metadata используют один открытый файловый handle;
+- evidence ограничен по размеру, защитные лимиты и backend cancellation сохраняются;
+- техническая неполнота анализа сама по себе не повышает Risk Score.
+
+### Известные ограничения development-ветки
+
+- canonical-equivalence collisions Unicode NFC/NFD пока не нормализуются и остаются отдельным hardening-пунктом;
+- RAR и 7Z структурно не разбираются;
+- финальный manifest/Cargo.lock bump до `0.5.0` выполняется только после интеграции baseline v0.4.0 и перед release-candidate проверкой;
+- manual Windows ZIP corpus QA остаётся release gate.
+
+## [0.3.4] — в разработке
+
+### Добавлено
+
+- асинхронная граница `ReportHistoryRepository` и versioned storage envelope v1;
+- migration fixtures, privacy helpers и readiness preflight для v0.4.0;
+- быстрые property tests и bounded fuzz targets без malware samples;
+- read-only scheduled/manual fuzz workflow с коротким retention.
+
+### Изменено
+
+- UI истории больше не зависит от синхронного прямого доступа к report keys;
+- накопление risk score защищено от переполнения на больших synthetic inputs;
+- GitHub Actions подготовлены к Node.js 24 runtime.
+
+### Важно
+
+- v0.3.4 остаётся совместимым readiness-релизом: Tauri/DPAPI storage и privacy settings входят в v0.4.0.
+
 ## [0.3.3] — 2026-08-06
 
 ### Исправлено

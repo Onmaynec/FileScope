@@ -1,0 +1,14 @@
+[
+  {
+    "schemaVersion": 1,
+    "id": "schema-v1",
+    "objectKind": "file",
+    "target": "C:/schema-v1.exe",
+    "displayName": "schema-v1.exe",
+    "riskLevel": "noThreatsFound",
+    "riskScore": 0,
+    "indicators": [],
+    "metadata": {},
+    "limitations": []
+  }
+]

@@ -1,9 +1,14 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::jobs::AnalysisFailure;
+
 pub const REPORT_SCHEMA_VERSION: u16 = 1;
-pub const ANALYZER_VERSION: &str = "1.1";
-pub const RULE_SET_VERSION: &str = "2026.08.06.1";
+pub const ANALYZER_VERSION: &str = "1.2";
+pub const RULE_SET_VERSION: &str = "2026.08.09.1";
+
+const MIB: u64 = 1024 * 1024;
+const GIB: u64 = 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -121,6 +126,12 @@ pub struct UrlAnalysis {
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveEntry {
     pub path: String,
+    #[serde(default)]
+    pub display_path: String,
+    #[serde(default)]
+    pub raw_name_hex: String,
+    #[serde(default)]
+    pub path_normalization_changed: bool,
     pub compressed_size: u64,
     pub uncompressed_size: u64,
     pub depth: usize,
@@ -128,6 +139,26 @@ pub struct ArchiveEntry {
     pub is_executable: bool,
     pub is_archive: bool,
     pub suspicious_path: bool,
+    #[serde(default)]
+    pub windows_path_key: String,
+    #[serde(default)]
+    pub is_encrypted: bool,
+    #[serde(default)]
+    pub is_symlink: bool,
+    #[serde(default)]
+    pub is_special: bool,
+    #[serde(default)]
+    pub has_ads: bool,
+    #[serde(default)]
+    pub has_reserved_name: bool,
+    #[serde(default)]
+    pub has_trailing_dot_or_space: bool,
+    #[serde(default)]
+    pub has_control_or_bidi: bool,
+    #[serde(default)]
+    pub path_collision: bool,
+    #[serde(default)]
+    pub file_directory_collision: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -140,9 +171,37 @@ pub struct ArchiveAnalysis {
     pub total_uncompressed_size: u64,
     pub maximum_depth: usize,
     pub compression_ratio: f64,
+    #[serde(default)]
+    pub compression_ratio_infinite: bool,
     pub nested_archives: usize,
     pub executable_entries: usize,
     pub suspicious_paths: usize,
+    #[serde(default)]
+    pub entries_scanned: usize,
+    #[serde(default)]
+    pub summary_complete: bool,
+    #[serde(default)]
+    pub unreadable_entries: usize,
+    #[serde(default)]
+    pub encrypted_entries: usize,
+    #[serde(default)]
+    pub symlink_entries: usize,
+    #[serde(default)]
+    pub special_entries: usize,
+    #[serde(default)]
+    pub ads_entries: usize,
+    #[serde(default)]
+    pub reserved_name_entries: usize,
+    #[serde(default)]
+    pub trailing_dot_or_space_entries: usize,
+    #[serde(default)]
+    pub control_or_bidi_entries: usize,
+    #[serde(default)]
+    pub normalization_changed_entries: usize,
+    #[serde(default)]
+    pub path_collisions: usize,
+    #[serde(default)]
+    pub file_directory_collisions: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,17 +252,43 @@ pub struct AnalysisLimits {
 impl Default for AnalysisLimits {
     fn default() -> Self {
         Self {
-            maximum_file_size_bytes: 512 * 1024 * 1024,
-            maximum_read_bytes: 512 * 1024 * 1024,
-            maximum_parser_memory_bytes: 128 * 1024 * 1024,
+            maximum_file_size_bytes: 512 * MIB,
+            maximum_read_bytes: 512 * MIB,
+            maximum_parser_memory_bytes: 128 * MIB,
             job_timeout_ms: 120_000,
             maximum_archive_entries: 10_000,
-            maximum_archive_uncompressed_bytes: 2 * 1024 * 1024 * 1024,
+            maximum_archive_uncompressed_bytes: 2 * GIB,
             maximum_archive_depth: 12,
             maximum_compression_ratio: 150.0,
             active_url_timeout_ms: 8_000,
             active_url_redirect_limit: 5,
         }
+    }
+}
+
+impl AnalysisLimits {
+    pub fn validated(mut self) -> Result<Self, AnalysisFailure> {
+        if !self.maximum_compression_ratio.is_finite() {
+            return Err(AnalysisFailure::invalid(
+                "maximumCompressionRatio должен быть конечным числом.",
+            ));
+        }
+
+        self.maximum_file_size_bytes = self.maximum_file_size_bytes.clamp(MIB, 4 * GIB);
+        self.maximum_read_bytes = self.maximum_read_bytes.clamp(MIB, 4 * GIB);
+        self.maximum_parser_memory_bytes =
+            self.maximum_parser_memory_bytes.clamp(8 * MIB, 512 * MIB);
+        self.job_timeout_ms = self.job_timeout_ms.clamp(5_000, 30 * 60 * 1_000);
+        self.maximum_archive_entries = self.maximum_archive_entries.clamp(10, 100_000);
+        self.maximum_archive_uncompressed_bytes = self
+            .maximum_archive_uncompressed_bytes
+            .clamp(10 * MIB, 20 * GIB);
+        self.maximum_archive_depth = self.maximum_archive_depth.clamp(1, 64);
+        self.maximum_compression_ratio = self.maximum_compression_ratio.clamp(2.0, 10_000.0);
+        self.active_url_timeout_ms = self.active_url_timeout_ms.clamp(1_000, 30_000);
+        self.active_url_redirect_limit = self.active_url_redirect_limit.min(10);
+
+        Ok(self)
     }
 }
 
@@ -213,4 +298,67 @@ pub fn app_version() -> String {
 
 pub fn report_created_by() -> CreatedBy {
     CreatedBy::default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backend_limits_are_clamped_even_for_extreme_ipc_values() {
+        let limits = AnalysisLimits {
+            maximum_file_size_bytes: u64::MAX,
+            maximum_read_bytes: u64::MAX,
+            maximum_parser_memory_bytes: u64::MAX,
+            job_timeout_ms: u64::MAX,
+            maximum_archive_entries: usize::MAX,
+            maximum_archive_uncompressed_bytes: u64::MAX,
+            maximum_archive_depth: usize::MAX,
+            maximum_compression_ratio: 1_000_000.0,
+            active_url_timeout_ms: u64::MAX,
+            active_url_redirect_limit: usize::MAX,
+        }
+        .validated()
+        .unwrap();
+
+        assert_eq!(limits.maximum_file_size_bytes, 4 * GIB);
+        assert_eq!(limits.maximum_read_bytes, 4 * GIB);
+        assert_eq!(limits.maximum_parser_memory_bytes, 512 * MIB);
+        assert_eq!(limits.job_timeout_ms, 30 * 60 * 1_000);
+        assert_eq!(limits.maximum_archive_entries, 100_000);
+        assert_eq!(limits.maximum_archive_uncompressed_bytes, 20 * GIB);
+        assert_eq!(limits.maximum_archive_depth, 64);
+        assert_eq!(limits.maximum_compression_ratio, 10_000.0);
+        assert_eq!(limits.active_url_timeout_ms, 30_000);
+        assert_eq!(limits.active_url_redirect_limit, 10);
+    }
+
+    #[test]
+    fn backend_limits_keep_minimum_resource_budgets_enabled() {
+        let limits = AnalysisLimits {
+            maximum_file_size_bytes: 0,
+            maximum_read_bytes: 0,
+            maximum_parser_memory_bytes: 0,
+            job_timeout_ms: 0,
+            maximum_archive_entries: 0,
+            maximum_archive_uncompressed_bytes: 0,
+            maximum_archive_depth: 0,
+            maximum_compression_ratio: 0.0,
+            active_url_timeout_ms: 0,
+            active_url_redirect_limit: 0,
+        }
+        .validated()
+        .unwrap();
+
+        assert_eq!(limits.maximum_file_size_bytes, MIB);
+        assert_eq!(limits.maximum_read_bytes, MIB);
+        assert_eq!(limits.maximum_parser_memory_bytes, 8 * MIB);
+        assert_eq!(limits.job_timeout_ms, 5_000);
+        assert_eq!(limits.maximum_archive_entries, 10);
+        assert_eq!(limits.maximum_archive_uncompressed_bytes, 10 * MIB);
+        assert_eq!(limits.maximum_archive_depth, 1);
+        assert_eq!(limits.maximum_compression_ratio, 2.0);
+        assert_eq!(limits.active_url_timeout_ms, 1_000);
+        assert_eq!(limits.active_url_redirect_limit, 0);
+    }
 }

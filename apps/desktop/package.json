@@ -1,7 +1,7 @@
 {
   "name": "@filescope/desktop",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "FileScope Windows desktop application by Veilbyte",
   "author": "Veilbyte",
   "license": "SEE LICENSE IN ../../LICENSE",
@@ -21,7 +21,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:properties": "vitest run --config vitest.config.ts src/features/analysis/model/history-privacy.test.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

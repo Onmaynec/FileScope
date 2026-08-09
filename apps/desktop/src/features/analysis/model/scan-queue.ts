@@ -18,6 +18,17 @@ export interface AnalysisQueueItem {
   error?: string;
 }
 
+export interface QueueDuplicate {
+  attempted: AnalysisQueueItem;
+  existing: AnalysisQueueItem;
+}
+
+export interface QueueAppendResult {
+  queue: AnalysisQueueItem[];
+  added: AnalysisQueueItem[];
+  duplicates: QueueDuplicate[];
+}
+
 export function createQueueItem(
   kind: ObjectKind,
   target: string,
@@ -35,20 +46,36 @@ export function createQueueItem(
   };
 }
 
-export function appendUniqueQueueItems(current: AnalysisQueueItem[], next: AnalysisQueueItem[]): AnalysisQueueItem[] {
-  const existing = new Set(
+export function appendUniqueQueueItemsDetailed(
+  current: AnalysisQueueItem[],
+  next: AnalysisQueueItem[],
+): QueueAppendResult {
+  const activeByIdentity = new Map(
     current
       .filter((item) => item.status === 'pending' || item.status === 'running' || item.status === 'cancelling')
-      .map(queueIdentity),
+      .map((item) => [queueIdentity(item), item] as const),
   );
-  const result = [...current];
+  const queue = [...current];
+  const added: AnalysisQueueItem[] = [];
+  const duplicates: QueueDuplicate[] = [];
+
   for (const item of next) {
     const identity = queueIdentity(item);
-    if (existing.has(identity)) continue;
-    existing.add(identity);
-    result.push(item);
+    const existing = activeByIdentity.get(identity);
+    if (existing) {
+      duplicates.push({ attempted: item, existing });
+      continue;
+    }
+    activeByIdentity.set(identity, item);
+    added.push(item);
+    queue.push(item);
   }
-  return result;
+
+  return { queue, added, duplicates };
+}
+
+export function appendUniqueQueueItems(current: AnalysisQueueItem[], next: AnalysisQueueItem[]): AnalysisQueueItem[] {
+  return appendUniqueQueueItemsDetailed(current, next).queue;
 }
 
 export function updateQueueItem(

@@ -25,6 +25,7 @@ pub fn indicator(
 
     deduplicate_evidence(&mut value.evidence);
     normalize_pe_indicator(&mut value);
+    normalize_analysis_status(&mut value);
     value
 }
 
@@ -64,6 +65,23 @@ fn normalize_pe_indicator(indicator: &mut ThreatIndicator) {
         }
         "pe.imports.suspicious" => normalize_sensitive_imports(indicator),
         _ => {}
+    }
+}
+
+fn normalize_analysis_status(indicator: &mut ThreatIndicator) {
+    if indicator.id == "url.host.many-subdomains" {
+        indicator.title = "Приближённая оценка числа поддоменов".to_string();
+        indicator.description = "FileScope v0.3.4 использует ограниченный встроенный список сложных public suffix. До перехода на полный offline Public Suffix List эта оценка является информационной и не влияет на Risk Score.".to_string();
+        indicator.recommendation = "Проверяйте полный hostname вручную. Каноническое определение registrable domain отслеживается в Issue #68.".to_string();
+        indicator.category = "analysis-status".to_string();
+        indicator.severity = IndicatorSeverity::Info;
+        indicator.score = 0;
+        return;
+    }
+    if indicator.category == "limits" || indicator.category == "analysis-status" {
+        indicator.category = "analysis-status".to_string();
+        indicator.severity = IndicatorSeverity::Info;
+        indicator.score = 0;
     }
 }
 
@@ -136,23 +154,33 @@ fn normalize_sensitive_imports(indicator: &mut ThreatIndicator) {
         "Учитывайте цифровую подпись, источник файла и сочетание с другими признаками.".to_string();
 }
 
+fn contributes_to_threat_score(indicator: &ThreatIndicator) -> bool {
+    indicator.category != "analysis-status"
+}
+
 pub fn calculate_risk(indicators: &[ThreatIndicator]) -> (u16, RiskLevel) {
     let mut seen = HashSet::new();
     let unique = indicators
         .iter()
         .filter(|indicator| seen.insert(indicator_key(indicator)))
         .collect::<Vec<_>>();
-
-    let score = unique
+    let scoring = unique
         .iter()
-        .map(|indicator| indicator.score)
-        .sum::<u16>()
+        .copied()
+        .filter(|indicator| contributes_to_threat_score(indicator))
+        .collect::<Vec<_>>();
+
+    let score = scoring
+        .iter()
+        .fold(0_u16, |total, indicator| {
+            total.saturating_add(indicator.score)
+        })
         .min(100);
 
-    let has_critical = unique
+    let has_critical = scoring
         .iter()
         .any(|indicator| indicator.severity == IndicatorSeverity::Critical);
-    let has_high = unique
+    let has_high = scoring
         .iter()
         .any(|indicator| indicator.severity == IndicatorSeverity::High);
 
@@ -211,6 +239,46 @@ mod tests {
             vec![],
         )];
         assert_eq!(calculate_risk(&values).1, RiskLevel::NoThreatsFound);
+    }
+
+    #[test]
+    fn operational_limit_is_normalized_and_does_not_become_threat_verdict() {
+        let value = indicator(
+            "file.size.limit-exceeded",
+            "Limit",
+            "Limit",
+            "limits",
+            IndicatorSeverity::High,
+            45,
+            vec!["size".to_string()],
+            "review",
+        );
+        assert_eq!(value.category, "analysis-status");
+        assert_eq!(value.severity, IndicatorSeverity::Info);
+        assert_eq!(value.score, 0);
+        assert_eq!(calculate_risk(&[value]), (0, RiskLevel::NoThreatsFound));
+    }
+
+    #[test]
+    fn approximate_subdomain_count_does_not_raise_threat_score() {
+        let value = indicator(
+            "url.host.many-subdomains",
+            "Many subdomains",
+            "Approximate registrable domain",
+            "hostname",
+            IndicatorSeverity::Medium,
+            16,
+            vec![
+                "Поддоменов: 5".to_string(),
+                "Registrable domain: example.co.uk".to_string(),
+            ],
+            "review",
+        );
+        assert_eq!(value.category, "analysis-status");
+        assert_eq!(value.severity, IndicatorSeverity::Info);
+        assert_eq!(value.score, 0);
+        assert!(value.description.contains("Public Suffix List"));
+        assert_eq!(calculate_risk(&[value]), (0, RiskLevel::NoThreatsFound));
     }
 
     #[test]

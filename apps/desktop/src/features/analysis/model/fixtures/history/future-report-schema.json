@@ -1,0 +1,12 @@
+{
+  "storageVersion": 1,
+  "reportSchemaVersion": 99,
+  "savedAt": "2026-08-07T00:00:00Z",
+  "reports": [
+    {
+      "schemaVersion": 99,
+      "id": "future-report",
+      "displayName": "Future report"
+    }
+  ]
+}
