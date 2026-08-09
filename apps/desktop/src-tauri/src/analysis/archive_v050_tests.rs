@@ -5,7 +5,7 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 use super::{
     archive::analyze_zip,
     jobs::JobRegistry,
-    types::{AnalysisLimits, IndicatorSeverity, RiskLevel},
+    types::{AnalysisCompleteness, AnalysisLimits, IndicatorSeverity, RiskLevel},
 };
 
 const LOCAL_HEADER_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
@@ -109,6 +109,39 @@ fn symlink_entry_is_classified_without_following_or_extracting_it() {
         .any(|item| item.id == "archive.entry.symlink"));
 }
 
+#[test]
+fn damaged_local_header_keeps_readable_entries_in_partial_report() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("damaged-entry.zip");
+    let writer_file = File::create(&path).unwrap();
+    let mut writer = ZipWriter::new(writer_file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Stored);
+    writer.start_file("docs/first.txt", options).unwrap();
+    writer.write_all(b"first").unwrap();
+    writer.start_file("docs/second.txt", options).unwrap();
+    writer.write_all(b"second").unwrap();
+    writer.finish().unwrap();
+    corrupt_second_local_header(&path);
+
+    let report = analyze_fixture(&path, "zip-damaged-entry");
+    let archive = report.archive.as_ref().unwrap();
+    assert_eq!(report.analysis_completeness, AnalysisCompleteness::Partial);
+    assert_eq!(archive.total_entries, 2);
+    assert_eq!(archive.entries_scanned, 1);
+    assert_eq!(archive.unreadable_entries, 1);
+    assert!(!archive.summary_complete);
+    assert_eq!(archive.entries[0].path, "docs/first.txt");
+    assert_eq!(report.risk_score, 0);
+    assert_eq!(report.risk_level, RiskLevel::NoThreatsFound);
+    assert_eq!(report.metadata["contentExtractedToDisk"], false);
+    assert_eq!(report.metadata["unreadableEntries"], 1);
+    assert!(report.indicators.iter().any(|item| {
+        item.id == "archive.entry.metadata-unreadable"
+            && item.severity == IndicatorSeverity::Info
+            && item.score == 0
+    }));
+}
+
 fn analyze_fixture(path: &Path, job_id: &str) -> super::types::AnalysisReport {
     let registry = JobRegistry::default();
     let token = registry.start(job_id, 30_000).unwrap();
@@ -137,6 +170,18 @@ fn set_first_entry_encrypted_flags(path: &Path) {
     let central = find_signature(&bytes, CENTRAL_HEADER_SIGNATURE).expect("central ZIP header");
     bytes[central + 8] |= 0x01;
 
+    fs::write(path, bytes).unwrap();
+}
+
+fn corrupt_second_local_header(path: &Path) {
+    let mut bytes = fs::read(path).unwrap();
+    let local_headers = bytes
+        .windows(LOCAL_HEADER_SIGNATURE.len())
+        .enumerate()
+        .filter_map(|(index, window)| (window == LOCAL_HEADER_SIGNATURE).then_some(index))
+        .collect::<Vec<_>>();
+    assert!(local_headers.len() >= 2, "fixture must contain two local headers");
+    bytes[local_headers[1]] = 0;
     fs::write(path, bytes).unwrap();
 }
 
