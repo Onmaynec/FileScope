@@ -129,6 +129,28 @@ mod history_storage {
             fs::set_permissions(&blocked_history, permissions).unwrap();
         }
 
+        #[test]
+        fn clear_reports_unavailable_when_history_entry_cannot_be_removed() {
+            let temp = TempDir::new().unwrap();
+            let store = HistoryStore::new(temp.path().join("history"));
+            fs::create_dir_all(&store.directory).unwrap();
+
+            let blocked_entry = store
+                .directory
+                .join(format!("{GENERATION_PREFIX}blocked{GENERATION_SUFFIX}"));
+            fs::create_dir(&blocked_entry).unwrap();
+
+            let cleared = store.clear();
+            assert_eq!(cleared.status, HistoryStorageStatus::Unavailable);
+            assert!(!cleared.persisted);
+            assert!(cleared
+                .message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Не удалось полностью удалить историю"));
+            assert!(blocked_entry.exists());
+        }
+
         fn sample_report(id: &str) -> AnalysisReport {
             serde_json::from_value(json!({
                 "schemaVersion": REPORT_SCHEMA_VERSION,
