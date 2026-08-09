@@ -112,6 +112,10 @@ jobs:
       - name: Проверить готовность архитектуры к v0.4.0
         run: pnpm check:v040-readiness
 
+      - name: Проверить Windows history QA harness
+        shell: pwsh
+        run: ./scripts/windows-v040-history-qa.ps1 -Mode SelfTest
+
       - name: Проверить форматирование Rust
         working-directory: apps/desktop/src-tauri
         run: cargo fmt --all --check
