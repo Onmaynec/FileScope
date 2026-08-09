@@ -47,6 +47,9 @@ jobs:
       - name: Проверить готовность архитектуры к v0.4.0
         run: pnpm check:v040-readiness
 
+      - name: Проверить release preflight boundary
+        run: pnpm release:preflight:development
+
       - name: Проверить ESLint
         run: pnpm --filter @filescope/desktop lint
 
