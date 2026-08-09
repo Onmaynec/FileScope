@@ -117,7 +117,7 @@ function Get-ProtectionLabel([System.IO.FileInfo]$File) {
 }
 
 function Get-State([string]$Directory) {
-    $files = Get-HistoryFiles $Directory
+    $files = @(Get-HistoryFiles $Directory)
     $items = foreach ($file in $files) {
         [ordered]@{
             name = $file.Name
@@ -132,14 +132,14 @@ function Get-State([string]$Directory) {
         machine = $env:COMPUTERNAME
         user = $env:USERNAME
         identifier = $script:Identifier
-        appDataRoot = Resolve-AppDataRoot
+        appDataRoot = (Resolve-AppDataRoot)
         historyDirectory = $Directory
         files = @($items)
     }
 }
 
 function Assert-CurrentUserState([string]$Directory, [string[]]$Markers) {
-    $files = Get-HistoryFiles $Directory
+    $files = @(Get-HistoryFiles $Directory)
     $temp = @($files | Where-Object { $_.Name.EndsWith('.tmp', [System.StringComparison]::OrdinalIgnoreCase) })
     if ($temp.Count -gt 0) {
         Fail "обнаружены orphan temp-файлы: $($temp.Name -join ', ')"
@@ -279,7 +279,7 @@ function Assert-RestartStable([string]$Directory, [string]$Path) {
 }
 
 function Assert-ClearedState([string]$Directory) {
-    $files = Get-HistoryFiles $Directory
+    $files = @(Get-HistoryFiles $Directory)
     if ($files.Count -gt 0) {
         Fail "после full clear остались history payload: $($files.Name -join ', ')"
     }
