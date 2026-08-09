@@ -87,6 +87,16 @@ export interface ArchiveEntry {
   isExecutable: boolean;
   isArchive: boolean;
   suspiciousPath: boolean;
+  windowsPathKey?: string;
+  isEncrypted?: boolean;
+  isSymlink?: boolean;
+  isSpecial?: boolean;
+  hasAds?: boolean;
+  hasReservedName?: boolean;
+  hasTrailingDotOrSpace?: boolean;
+  hasControlOrBidi?: boolean;
+  pathCollision?: boolean;
+  fileDirectoryCollision?: boolean;
 }
 
 export interface ArchiveAnalysis {
@@ -101,6 +111,17 @@ export interface ArchiveAnalysis {
   nestedArchives: number;
   executableEntries: number;
   suspiciousPaths: number;
+  entriesScanned?: number;
+  summaryComplete?: boolean;
+  encryptedEntries?: number;
+  symlinkEntries?: number;
+  specialEntries?: number;
+  adsEntries?: number;
+  reservedNameEntries?: number;
+  trailingDotOrSpaceEntries?: number;
+  controlOrBidiEntries?: number;
+  pathCollisions?: number;
+  fileDirectoryCollisions?: number;
 }
 
 export interface AnalysisReport {
