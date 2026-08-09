@@ -22,6 +22,22 @@ Pull request smoke использует короткий bounded budget 20 се�
 
 Workflow работает с `contents: read`, без secrets и production Environment. Crash artifacts создаются только при ошибке и хранятся не более трёх дней. Readiness gate автоматически проверяет все `.rs` targets в `fuzz/fuzz_targets`, их регистрацию в Cargo manifest, присутствие обязательных targets в workflow и отсутствие запрещённых side effects в target wrappers.
 
+## Evidence длительных запусков
+
+Успешный `schedule` или `workflow_dispatch` run формирует отдельный metadata-only artifact `FileScope-fuzz-evidence-<run id>`. Он содержит JSON с:
+
+- `runId` и `runAttempt`;
+- типом события;
+- `headSha`;
+- фактическим budget на target;
+- `conclusion=success`;
+- `crashArtifacts=0`;
+- точным набором всех пяти fuzz targets.
+
+Metadata artifact не содержит corpus, crash input, пользовательские данные или секреты и может храниться 30 дней. Это отдельный класс artifact: ограничение ≤3 дней относится только к crash inputs.
+
+Финальный release evidence для v0.4.0 требует минимум два независимых успешных extended run с budget не менее 180 секунд на каждый target. Хотя бы один из них обязан быть ручным `workflow_dispatch` на точном `validatedHeadSha` release candidate. PR smoke run не считается extended evidence независимо от количества накопившихся PR запусков.
+
 ## Обработка находок
 
 Потенциально security-sensitive crash не публикуется публичным Issue с exploit details. Он проходит private triage: минимизация, проверка отсутствия секретов, классификация panic/OOM/hang/invariant, безопасный regression fixture и исправление root cause.
