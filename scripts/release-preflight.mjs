@@ -34,6 +34,7 @@ if (development) {
 
 execFileSync(process.execPath, ['scripts/check-version-consistency.mjs'], { stdio: 'inherit' });
 execFileSync(process.execPath, ['scripts/check-v040-readiness.mjs'], { stdio: 'inherit' });
+execFileSync(process.execPath, ['scripts/check-v040-release-boundary.mjs'], { stdio: 'inherit' });
 
 const template = readJson(evidenceTemplatePath, evidenceTemplatePath);
 validateEvidence(template, { allowIncomplete: true, version });
