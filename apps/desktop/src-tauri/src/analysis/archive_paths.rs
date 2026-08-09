@@ -28,11 +28,13 @@ pub fn assess_archive_path(raw_name: &str, enclosed: bool) -> ArchivePathAssessm
         || has_drive_prefix;
 
     let has_ads = components.iter().enumerate().any(|(index, component)| {
-        component
-            .char_indices()
-            .any(|(offset, ch)| ch == ':' && !(index == 0 && offset == 1 && is_windows_drive_component(component)))
+        component.char_indices().any(|(offset, ch)| {
+            ch == ':' && !(index == 0 && offset == 1 && is_windows_drive_component(component))
+        })
     });
-    let has_reserved_name = components.iter().any(|component| is_windows_reserved_component(component));
+    let has_reserved_name = components
+        .iter()
+        .any(|component| is_windows_reserved_component(component));
     let has_trailing_dot_or_space = components
         .iter()
         .any(|component| component.ends_with('.') || component.ends_with(' '));
@@ -136,7 +138,9 @@ mod tests {
     fn absolute_parent_and_drive_paths_are_detected() {
         assert!(assess_archive_path("../escape.exe", false).has_parent_or_absolute_path);
         assert!(assess_archive_path("/absolute.exe", false).has_parent_or_absolute_path);
-        assert!(assess_archive_path("C:/Windows/System32/a.dll", false).has_parent_or_absolute_path);
+        assert!(
+            assess_archive_path("C:/Windows/System32/a.dll", false).has_parent_or_absolute_path
+        );
     }
 
     #[test]
@@ -148,6 +152,9 @@ mod tests {
     #[test]
     fn windows_key_collapses_case_and_trailing_dot_space() {
         assert_eq!(windows_comparison_key("Docs/Readme.txt"), "docs/readme.txt");
-        assert_eq!(windows_comparison_key("docs/readme.TXT. "), "docs/readme.txt");
+        assert_eq!(
+            windows_comparison_key("docs/readme.TXT. "),
+            "docs/readme.txt"
+        );
     }
 }
