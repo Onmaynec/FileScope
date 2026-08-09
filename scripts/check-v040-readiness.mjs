@@ -84,6 +84,7 @@ if (existsSync(historyFaultTestsPath)) {
     'crash_after_temp_sync_preserves_previous_generation_and_cleans_orphan_on_next_publish',
     'blocked_app_data_path_is_unavailable_and_preserves_existing_sentinel',
     'readonly_blocker_is_reported_as_unavailable_without_false_persistence',
+    'clear_reports_unavailable_when_history_entry_cannot_be_removed',
     'file.sync_all()',
     'TEMP_SUFFIX',
   ]) {
