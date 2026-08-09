@@ -13,6 +13,7 @@ if (!/^\d+\.\d+\.\d+(?:[-.][0-9A-Za-z.-]+)?$/.test(version)) {
 
 const releaseNotesPath = `docs/releases/v${version}.md`;
 const evidenceTemplatePath = `docs/releases/v${version}-evidence.example.json`;
+const defaultEvidencePath = `.github/release-evidence/v${version}.json`;
 for (const file of [
   'pnpm-lock.yaml',
   'apps/desktop/src-tauri/Cargo.lock',
@@ -39,13 +40,11 @@ if (development) {
 }
 
 const evidencePath = resolveEvidencePath(argumentsList);
-if (!evidencePath) {
-  throw new Error(
-    'Final release preflight requires structured QA evidence. Pass --evidence <path> or FILESCOPE_RELEASE_EVIDENCE.',
-  );
-}
 if (!existsSync(evidencePath)) {
-  throw new Error(`Release evidence file missing: ${evidencePath}`);
+  throw new Error(
+    `Final release preflight requires structured QA evidence at ${evidencePath}. ` +
+      'Pass --evidence <path> or FILESCOPE_RELEASE_EVIDENCE to override the default.',
+  );
 }
 
 const evidence = readJson(evidencePath, evidencePath);
@@ -64,7 +63,7 @@ function resolveEvidencePath(args) {
     if (!value || value.startsWith('--')) throw new Error('--evidence requires a file path');
     return value;
   }
-  return process.env.FILESCOPE_RELEASE_EVIDENCE || null;
+  return process.env.FILESCOPE_RELEASE_EVIDENCE || defaultEvidencePath;
 }
 
 function readJson(path, label) {
