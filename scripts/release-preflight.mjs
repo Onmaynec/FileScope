@@ -24,7 +24,11 @@ for (const file of [
 }
 
 const changelog = readFileSync('CHANGELOG.md', 'utf8');
-if (!changelog.includes(`## [${version}]`)) {
+if (development) {
+  if (!changelog.includes('## [Не выпущено]')) {
+    throw new Error('CHANGELOG must keep an unreleased section during development.');
+  }
+} else if (!changelog.includes(`## [${version}]`)) {
   throw new Error(`CHANGELOG section ${version} missing`);
 }
 
