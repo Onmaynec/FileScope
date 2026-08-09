@@ -125,7 +125,10 @@ pub fn analyze_zip(
                 "Не удалось прочитать metadata записи ZIP #{index}: {error}"
             ))
         })?;
-        let assessment = assess_archive_path(entry.name(), entry.enclosed_name().is_some());
+        let display_path = entry.name().to_string();
+        let raw_name_hex = hex::encode(entry.name_raw());
+        let assessment = assess_archive_path(&display_path, entry.enclosed_name().is_some());
+        let path_normalization_changed = display_path != assessment.normalized_path;
         let name = assessment.normalized_path;
         let depth = name.split('/').filter(|part| !part.is_empty()).count();
         let extension = PathBuf::from(&name)
@@ -165,13 +168,19 @@ pub fn analyze_zip(
         local_header_offsets.push(entry.header_start());
         entries.push(ArchiveEntry {
             path: name,
+            display_path,
+            raw_name_hex,
+            path_normalization_changed,
             compressed_size: entry.compressed_size(),
             uncompressed_size: entry.size(),
             depth,
             is_directory,
             is_executable,
             is_archive,
-            suspicious_path: assessment.suspicious || is_symlink || is_special,
+            suspicious_path: assessment.suspicious
+                || path_normalization_changed
+                || is_symlink
+                || is_special,
             windows_path_key: assessment.windows_comparison_key,
             is_encrypted: false,
             is_symlink,
@@ -221,6 +230,10 @@ pub fn analyze_zip(
     let control_or_bidi_entries = entries
         .iter()
         .filter(|entry| entry.has_control_or_bidi)
+        .count();
+    let normalization_changed_entries = entries
+        .iter()
+        .filter(|entry| entry.path_normalization_changed)
         .count();
     let path_collisions = entries.iter().filter(|entry| entry.path_collision).count();
     let file_directory_collisions = entries
@@ -331,6 +344,18 @@ pub fn analyze_zip(
             IndicatorSeverity::Medium,
             18,
             "Проверяйте исходное имя и нормализованное представление; не доверяйте только визуальному порядку символов.",
+        ));
+    }
+    if normalization_changed_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.path_normalization_changed,
+            "archive.path.normalized",
+            "Путь записи изменился при безопасной нормализации",
+            "FileScope сохранил исходные bytes и отображаемое имя, но заменил Windows-style разделители на канонический ZIP-путь для сопоставления и collision detection.",
+            IndicatorSeverity::Info,
+            0,
+            "Сравнивайте displayPath, path и rawNameHex в JSON-отчёте перед извлечением спорной записи.",
         ));
     }
     if symlink_entries > 0 {
@@ -474,6 +499,7 @@ pub fn analyze_zip(
         reserved_name_entries,
         trailing_dot_or_space_entries,
         control_or_bidi_entries,
+        normalization_changed_entries,
         path_collisions,
         file_directory_collisions,
     };
@@ -519,8 +545,10 @@ pub fn analyze_zip(
             "symlinkEntries": symlink_entries,
             "specialEntries": special_entries,
             "adsEntries": ads_entries,
+            "normalizationChangedEntries": normalization_changed_entries,
             "pathCollisions": path_collisions,
             "fileDirectoryCollisions": file_directory_collisions,
+            "rawEntryNameEncoding": "hex",
             "indicatorEvidenceLimit": MAX_INDICATOR_EVIDENCE,
             "appliedLimits": {
                 "maximumArchiveEntries": limits.maximum_archive_entries,
@@ -826,6 +854,31 @@ mod tests {
         assert_eq!(report.metadata["openedOnce"], true);
         assert_eq!(report.metadata["hashAndStructureSameHandle"], true);
         assert_eq!(report.sha256.as_deref().map(str::len), Some(64));
+    }
+
+    #[test]
+    fn preserves_raw_display_and_normalized_entry_names() {
+        let source_name = r"folder\payload.txt";
+        let file = make_zip(&[(source_name, b"hello")]);
+        let registry = JobRegistry::default();
+        let token = registry.start("zip-name-contract", 30_000).unwrap();
+        let report = analyze_zip(
+            file.path().to_string_lossy().to_string(),
+            AnalysisLimits::default(),
+            &token,
+        )
+        .unwrap();
+        let archive = report.archive.as_ref().unwrap();
+        let entry = &archive.entries[0];
+        assert_eq!(entry.display_path, source_name);
+        assert_eq!(entry.path, "folder/payload.txt");
+        assert_eq!(entry.raw_name_hex, hex::encode(source_name.as_bytes()));
+        assert!(entry.path_normalization_changed);
+        assert_eq!(archive.normalization_changed_entries, 1);
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| item.id == "archive.path.normalized" && item.score == 0));
     }
 
     #[test]
