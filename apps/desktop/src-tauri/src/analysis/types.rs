@@ -181,6 +181,8 @@ pub struct ArchiveAnalysis {
     #[serde(default)]
     pub summary_complete: bool,
     #[serde(default)]
+    pub unreadable_entries: usize,
+    #[serde(default)]
     pub encrypted_entries: usize,
     #[serde(default)]
     pub symlink_entries: usize,
