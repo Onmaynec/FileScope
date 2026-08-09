@@ -68,7 +68,7 @@ export function ReportView({ report, compact = false }: ReportViewProps) {
 
       {report.pe && <section className="analysis-section"><h3><FileCode2 />Windows PE</h3><dl className="metadata-grid"><div><dt>Архитектура</dt><dd>{report.pe.architecture}</dd></div><div><dt>Точка входа</dt><dd>0x{report.pe.entryPoint.toString(16)}</dd></div><div><dt>Authenticode</dt><dd>{report.pe.signaturePresent ? 'Таблица сертификатов присутствует; доверие издателя не проверялось' : 'Таблица сертификатов не обнаружена'}</dd></div><div><dt>Импорты</dt><dd>{report.pe.imports.length}</dd></div></dl><div className="analysis-table"><div className="analysis-table__head"><span>Секция</span><span>Virtual</span><span>Raw</span><span>Энтропия</span></div>{report.pe.sections.map((section) => <div className="analysis-table__row" key={section.name}><span>{section.name}</span><span>{formatBytes(section.virtualSize)}</span><span>{formatBytes(section.rawSize)}</span><span>{section.entropy.toFixed(2)}</span></div>)}</div></section>}
 
-      {report.archive && <section className="analysis-section"><h3><Archive />ZIP-архив</h3><dl className="metadata-grid"><div><dt>Элементов</dt><dd>{report.archive.totalEntries}</dd></div><div><dt>После распаковки</dt><dd>{formatBytes(report.archive.totalUncompressedSize)}</dd></div><div><dt>Коэффициент сжатия</dt><dd>{formatCompressionRatio(report)}</dd></div><div><dt>Максимальная глубина</dt><dd>{report.archive.maximumDepth}</dd></div><div><dt>Исполняемых файлов</dt><dd>{report.archive.executableEntries}</dd></div><div><dt>Вложенных архивов</dt><dd>{report.archive.nestedArchives}</dd></div></dl><div className="archive-entry-list">{report.archive.entries.slice(0, compact ? 20 : 200).map((entry) => <div className={`archive-entry ${entry.suspiciousPath || entry.isExecutable ? 'archive-entry--warning' : ''}`} key={`${entry.path}-${entry.uncompressedSize}`}><span>{entry.path}</span><small>{entry.isDirectory ? 'Папка' : formatBytes(entry.uncompressedSize)}{entry.isExecutable ? ' · исполняемый' : ''}{entry.isArchive ? ' · архив' : ''}</small></div>)}</div>{report.archive.entries.length > (compact ? 20 : 200) && <p className="helper-text">Показана только часть дерева. Полный список доступен в JSON-экспорте.</p>}</section>}
+      {report.archive && <section className="analysis-section"><h3><Archive />ZIP-архив</h3><dl className="metadata-grid"><div><dt>Элементов</dt><dd>{archiveEntriesLabel(report)}</dd></div><div><dt>Структурная сводка</dt><dd>{archiveSummaryLabel(report)}</dd></div><div><dt>После распаковки</dt><dd>{formatBytes(report.archive.totalUncompressedSize)}</dd></div><div><dt>Коэффициент сжатия</dt><dd>{formatCompressionRatio(report)}</dd></div><div><dt>Максимальная глубина</dt><dd>{report.archive.maximumDepth}</dd></div><div><dt>Исполняемых файлов</dt><dd>{report.archive.executableEntries}</dd></div><div><dt>Вложенных архивов</dt><dd>{report.archive.nestedArchives}</dd></div><div><dt>Зашифрованных</dt><dd>{report.archive.encryptedEntries ?? 0}</dd></div><div><dt>Symlink</dt><dd>{report.archive.symlinkEntries ?? 0}</dd></div><div><dt>ADS semantics</dt><dd>{report.archive.adsEntries ?? 0}</dd></div><div><dt>Windows-коллизий</dt><dd>{report.archive.pathCollisions ?? 0}</dd></div><div><dt>Файл/каталог коллизий</dt><dd>{report.archive.fileDirectoryCollisions ?? 0}</dd></div></dl><div className="archive-entry-list">{report.archive.entries.slice(0, compact ? 20 : 200).map((entry) => { const labels = archiveEntryLabels(entry); const warning = entry.suspiciousPath || entry.isExecutable || labels.length > 0; return <div className={`archive-entry ${warning ? 'archive-entry--warning' : ''}`} key={`${entry.path}-${entry.uncompressedSize}`}><span>{entry.path}</span><small>{entry.isDirectory ? 'Папка' : formatBytes(entry.uncompressedSize)}{labels.length > 0 ? ` · ${labels.join(' · ')}` : ''}</small></div>; })}</div>{report.archive.entries.length > (compact ? 20 : 200) && <p className="helper-text">Показана только часть дерева. Полный список просмотренных записей доступен в JSON-экспорте.</p>}{report.archive.summaryComplete === false && <p className="helper-text">Сводные размеры и счётчики относятся только к просмотренной части архива; непросмотренные записи не включены.</p>}</section>}
 
       <section className="analysis-section analysis-limitations"><h3>Ограничения результата</h3><ul>{report.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul></section>
     </section>
@@ -89,6 +89,37 @@ function formatCompressionRatio(report: AnalysisReport): string {
   return Number.isFinite(archive.compressionRatio) ? `${archive.compressionRatio.toFixed(1)}x` : 'Не определён';
 }
 
+function archiveEntriesLabel(report: AnalysisReport): string {
+  const archive = report.archive;
+  if (!archive) return '—';
+  if (archive.entriesScanned === undefined || archive.entriesScanned === archive.totalEntries) return `${archive.totalEntries}`;
+  return `${archive.totalEntries} · просмотрено ${archive.entriesScanned}`;
+}
+
+function archiveSummaryLabel(report: AnalysisReport): string {
+  const archive = report.archive;
+  if (!archive) return '—';
+  if (archive.summaryComplete === true) return 'Полная central-directory сводка';
+  if (archive.summaryComplete === false) return 'Частичная — достигнут лимит записей';
+  return 'Legacy-отчёт · статус неизвестен';
+}
+
+function archiveEntryLabels(entry: NonNullable<AnalysisReport['archive']>['entries'][number]): string[] {
+  const labels: string[] = [];
+  if (entry.isExecutable) labels.push('исполняемый');
+  if (entry.isArchive) labels.push('архив');
+  if (entry.isEncrypted) labels.push('зашифрован');
+  if (entry.isSymlink) labels.push('symlink');
+  if (entry.isSpecial) labels.push('special entry');
+  if (entry.hasAds) labels.push('ADS');
+  if (entry.hasReservedName) labels.push('reserved name');
+  if (entry.hasTrailingDotOrSpace) labels.push('trailing dot/space');
+  if (entry.hasControlOrBidi) labels.push('control/bidi');
+  if (entry.pathCollision) labels.push('Windows-коллизия');
+  if (entry.fileDirectoryCollision) labels.push('файл/каталог');
+  return labels;
+}
+
 function buildShortSummary(report: AnalysisReport): string {
   const lines = [
     `FileScope ${report.appVersion}: ${displayVerdictLabel(report)}`,
@@ -99,6 +130,7 @@ function buildShortSummary(report: AnalysisReport): string {
     `Полнота: ${completenessLabel(report.analysisCompleteness)}`,
   ];
   if (report.sha256) lines.push(`SHA-256: ${report.sha256}`);
+  if (report.archive) lines.push(`ZIP: ${archiveEntriesLabel(report)}; сводка: ${archiveSummaryLabel(report)}`);
   lines.push(`Признаков: ${report.indicators.length}`);
   const partialReason = getPartialReason(report);
   if (partialReason) lines.push(`Ограничение: ${partialReason}`);
