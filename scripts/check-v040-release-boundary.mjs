@@ -86,7 +86,7 @@ if (existsSync('.github/workflows/security-fuzz.yml')) {
   ]) {
     if (!fuzz.includes(literal)) errors.push(`security-fuzz.yml missing ${literal}`);
   }
-  requireNearby(fuzz, 'FileScope-fuzz-evidence-${{ github.run_id }}', 'retention-days: 30', 600, 'extended fuzz metadata retention must be 30 days');
+  requireNearby(fuzz, 'FileScope-fuzz-evidence-${{ github.run_id }}', 'retention-days: 3', 600, 'extended fuzz metadata retention must be <= 3 days');
   requireNearby(fuzz, 'FileScope-fuzz-crashes-${{ github.run_id }}', 'retention-days: 3', 600, 'fuzz crash retention must be <= 3 days');
   for (const target of ['report_deserialization', 'passive_url', 'rule_engine', 'file_format_and_pe', 'zip_metadata']) {
     if (!fuzz.includes(`cargo fuzz run ${target}`)) errors.push(`security-fuzz.yml missing target ${target}`);
