@@ -116,6 +116,7 @@ export interface ArchiveAnalysis {
   suspiciousPaths: number;
   entriesScanned?: number;
   summaryComplete?: boolean;
+  unreadableEntries?: number;
   encryptedEntries?: number;
   symlinkEntries?: number;
   specialEntries?: number;
