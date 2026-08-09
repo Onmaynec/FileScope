@@ -65,5 +65,7 @@ fn set_first_entry_encrypted_flags(path: &Path) {
 }
 
 fn find_signature(bytes: &[u8], signature: [u8; 4]) -> Option<usize> {
-    bytes.windows(signature.len()).position(|window| window == signature)
+    bytes
+        .windows(signature.len())
+        .position(|window| window == signature)
 }
