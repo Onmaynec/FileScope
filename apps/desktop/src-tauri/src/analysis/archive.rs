@@ -104,6 +104,8 @@ pub fn analyze_zip(
     let mut double_extension_count = 0_usize;
     let mut double_extension_evidence = Vec::new();
     let mut traversal_evidence = Vec::new();
+    let mut unreadable_entries = 0_usize;
+    let mut unreadable_entry_evidence = Vec::new();
     let archive_count = archive.len();
 
     if archive_count > limits.maximum_archive_entries {
@@ -120,11 +122,17 @@ pub fn analyze_zip(
     let scan_count = archive_count.min(limits.maximum_archive_entries);
     for index in 0..scan_count {
         token.checkpoint()?;
-        let entry = archive.by_index_raw(index).map_err(|error| {
-            AnalysisFailure::parse(format!(
-                "Не удалось прочитать metadata записи ZIP #{index}: {error}"
-            ))
-        })?;
+        let entry = match archive.by_index_raw(index) {
+            Ok(entry) => entry,
+            Err(error) => {
+                unreadable_entries = unreadable_entries.saturating_add(1);
+                push_evidence(
+                    &mut unreadable_entry_evidence,
+                    &format!("Запись #{index}: {error}"),
+                );
+                continue;
+            }
+        };
         let display_path = entry.name().to_string();
         let raw_name_hex = hex::encode(entry.name_raw());
         let assessment = assess_archive_path(&display_path, entry.enclosed_name().is_some());
@@ -215,6 +223,7 @@ pub fn analyze_zip(
     }
     mark_windows_path_collisions(&mut entries);
 
+    let entries_scanned = entries.len();
     let encrypted_entries = entries.iter().filter(|entry| entry.is_encrypted).count();
     let symlink_entries = entries.iter().filter(|entry| entry.is_symlink).count();
     let special_entries = entries.iter().filter(|entry| entry.is_special).count();
@@ -245,6 +254,23 @@ pub fn analyze_zip(
     let (compression_ratio, compression_ratio_infinite) =
         safe_compression_ratio(total_compressed, total_uncompressed);
 
+    if unreadable_entries > 0 {
+        append_truncated_summary(
+            &mut unreadable_entry_evidence,
+            unreadable_entries,
+            "непрочитанных записей",
+        );
+        indicators.push(indicator(
+            "archive.entry.metadata-unreadable",
+            "Часть ZIP-записей не удалось структурно прочитать",
+            "Central directory доступен, но metadata/content offset одной или нескольких записей повреждены или несовместимы. FileScope сохранил доступную часть отчёта вместо полного отказа.",
+            "analysis-status",
+            IndicatorSeverity::Info,
+            0,
+            unreadable_entry_evidence,
+            "Считайте структурную сводку частичной и не извлекайте архив обычным способом, пока повреждение не объяснено.",
+        ));
+    }
     if double_extension_count > 0 {
         append_truncated_summary(
             &mut double_extension_evidence,
@@ -469,12 +495,14 @@ pub fn analyze_zip(
         ));
     }
 
-    let summary_complete = scan_count == archive_count;
-    let completeness = if !summary_complete
+    let stopped_by_limit = scan_count < archive_count
         || maximum_depth > limits.maximum_archive_depth
-        || total_uncompressed > limits.maximum_archive_uncompressed_bytes
-    {
+        || total_uncompressed > limits.maximum_archive_uncompressed_bytes;
+    let summary_complete = !stopped_by_limit && unreadable_entries == 0 && entries_scanned == archive_count;
+    let completeness = if stopped_by_limit {
         AnalysisCompleteness::StoppedByLimit
+    } else if unreadable_entries > 0 {
+        AnalysisCompleteness::Partial
     } else {
         AnalysisCompleteness::Complete
     };
@@ -490,8 +518,9 @@ pub fn analyze_zip(
         nested_archives,
         executable_entries,
         suspicious_paths,
-        entries_scanned: scan_count,
+        entries_scanned,
         summary_complete,
+        unreadable_entries,
         encrypted_entries,
         symlink_entries,
         special_entries,
@@ -504,6 +533,17 @@ pub fn analyze_zip(
         file_directory_collisions,
     };
     let (risk_score, risk_level) = calculate_risk(&indicators);
+    let mut limitations = vec![
+        "Содержимое записей не запускается и не извлекается на диск".to_string(),
+        "Зашифрованные записи определяются по metadata, но не расшифровываются и не проверяются по содержимому".to_string(),
+        "RAR и 7Z распознаются как тип файла, но структурно пока не разбираются".to_string(),
+    ];
+    if unreadable_entries > 0 {
+        limitations.push(
+            "Часть ZIP-записей имеет повреждённые или несовместимые local headers; сводка включает только успешно прочитанные записи"
+                .to_string(),
+        );
+    }
 
     Ok(AnalysisReport {
         schema_version: REPORT_SCHEMA_VERSION,
@@ -527,9 +567,11 @@ pub fn analyze_zip(
         indicators,
         metadata: json!({
             "contentExtractedToDisk": false,
-            "entriesRead": scan_count,
+            "entriesRead": entries_scanned,
+            "entriesAttempted": scan_count,
             "entriesTotal": archive_count,
             "summaryComplete": summary_complete,
+            "unreadableEntries": unreadable_entries,
             "entryLimitApplied": scan_count < archive_count,
             "backendCancellation": true,
             "jobTimeoutMs": limits.job_timeout_ms,
@@ -561,11 +603,7 @@ pub fn analyze_zip(
         url: None,
         archive: Some(analysis),
         is_demo: false,
-        limitations: vec![
-            "Содержимое записей не запускается и не извлекается на диск".to_string(),
-            "Зашифрованные записи определяются по metadata, но не расшифровываются и не проверяются по содержимому".to_string(),
-            "RAR и 7Z распознаются как тип файла, но структурно пока не разбираются".to_string(),
-        ],
+        limitations,
     })
 }
 
