@@ -11,6 +11,7 @@ const required = [
   'apps/desktop/src/features/analysis/model/fixtures/history/future-report-schema.json',
   'apps/desktop/src-tauri/src/history_storage.rs',
   'apps/desktop/src-tauri/src/history_protection.rs',
+  'apps/desktop/src-tauri/tests/history_storage_faults.rs',
   'apps/desktop/src-tauri/src/analysis/properties.rs',
   'apps/desktop/src-tauri/src/analysis/fuzzing.rs',
   'apps/desktop/src-tauri/fuzz/Cargo.toml',
@@ -73,6 +74,20 @@ if (existsSync(historyStoragePath)) {
   const storage = readFileSync(historyStoragePath, 'utf8');
   for (const requiredLiteral of ['history_protection_status', 'protect_payload', 'unprotect_payload', 'LEGACY_GENERATION_SUFFIX', 'cleanup_plaintext_generations']) {
     if (!storage.includes(requiredLiteral)) errors.push(`history_storage.rs missing ${requiredLiteral}`);
+  }
+}
+
+const historyFaultTestsPath = join(root, 'apps/desktop/src-tauri/tests/history_storage_faults.rs');
+if (existsSync(historyFaultTestsPath)) {
+  const tests = readFileSync(historyFaultTestsPath, 'utf8');
+  for (const requiredLiteral of [
+    'crash_after_temp_sync_preserves_previous_generation_and_cleans_orphan_on_next_publish',
+    'blocked_app_data_path_is_unavailable_and_preserves_existing_sentinel',
+    'readonly_blocker_is_reported_as_unavailable_without_false_persistence',
+    'file.sync_all()',
+    'TEMP_SUFFIX',
+  ]) {
+    if (!tests.includes(requiredLiteral)) errors.push(`history_storage_faults.rs missing ${requiredLiteral}`);
   }
 }
 
