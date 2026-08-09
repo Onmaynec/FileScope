@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs::{File, Metadata, OpenOptions},
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -12,6 +13,7 @@ use uuid::Uuid;
 use zip::ZipArchive;
 
 use super::{
+    archive_paths::assess_archive_path,
     jobs::{AnalysisFailure, AnalysisFailureCode, JobToken},
     rules::{calculate_risk, indicator},
     types::{
@@ -30,6 +32,12 @@ const DECOY_EXTENSIONS: &[&str] = &[
     "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "gif", "txt", "mp3", "mp4",
 ];
 const MAX_INDICATOR_EVIDENCE: usize = 30;
+const ZIP_LOCAL_HEADER_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
+const ZIP_FLAG_ENCRYPTED: u16 = 0x0001;
+const UNIX_FILE_TYPE_MASK: u32 = 0o170000;
+const UNIX_REGULAR_FILE: u32 = 0o100000;
+const UNIX_DIRECTORY: u32 = 0o040000;
+const UNIX_SYMLINK: u32 = 0o120000;
 
 pub fn analyze_zip(
     path: String,
@@ -87,14 +95,17 @@ pub fn analyze_zip(
     })?;
     let mut indicators: Vec<ThreatIndicator> = Vec::new();
     let mut entries = Vec::new();
+    let mut local_header_offsets = Vec::new();
     let mut total_compressed = 0_u64;
     let mut total_uncompressed = 0_u64;
     let mut maximum_depth = 0_usize;
     let mut nested_archives = 0_usize;
     let mut executable_entries = 0_usize;
-    let mut suspicious_paths = 0_usize;
     let mut double_extension_count = 0_usize;
     let mut double_extension_evidence = Vec::new();
+    let mut traversal_evidence = Vec::new();
+    let mut unreadable_entries = 0_usize;
+    let mut unreadable_entry_evidence = Vec::new();
     let archive_count = archive.len();
 
     if archive_count > limits.maximum_archive_entries {
@@ -111,16 +122,23 @@ pub fn analyze_zip(
     let scan_count = archive_count.min(limits.maximum_archive_entries);
     for index in 0..scan_count {
         token.checkpoint()?;
-        let entry = archive.by_index(index).map_err(|error| {
-            AnalysisFailure::parse(format!("Не удалось прочитать запись ZIP #{index}: {error}"))
-        })?;
-        let name = entry.name().replace('\\', "/");
+        let entry = match archive.by_index_raw(index) {
+            Ok(entry) => entry,
+            Err(error) => {
+                unreadable_entries = unreadable_entries.saturating_add(1);
+                push_evidence(
+                    &mut unreadable_entry_evidence,
+                    &format!("Запись #{index}: {error}"),
+                );
+                continue;
+            }
+        };
+        let display_path = entry.name().to_string();
+        let raw_name_hex = hex::encode(entry.name_raw());
+        let assessment = assess_archive_path(&display_path, entry.enclosed_name().is_some());
+        let path_normalization_changed = display_path != assessment.normalized_path;
+        let name = assessment.normalized_path;
         let depth = name.split('/').filter(|part| !part.is_empty()).count();
-        let suspicious_path = entry.enclosed_name().is_none()
-            || name.starts_with('/')
-            || name.contains("../")
-            || name.contains(":/")
-            || name.contains(':');
         let extension = PathBuf::from(&name)
             .extension()
             .and_then(|value| value.to_str())
@@ -128,9 +146,11 @@ pub fn analyze_zip(
             .to_ascii_lowercase();
         let is_executable = EXECUTABLE_EXTENSIONS.contains(&extension.as_str());
         let is_archive = ARCHIVE_EXTENSIONS.contains(&extension.as_str());
+        let is_directory = entry.is_dir();
+        let (is_symlink, is_special) = classify_unix_entry(entry.unix_mode(), is_directory);
 
-        if suspicious_path {
-            suspicious_paths += 1;
+        if assessment.has_parent_or_absolute_path {
+            push_evidence(&mut traversal_evidence, &name);
         }
         if is_executable {
             executable_entries += 1;
@@ -140,9 +160,7 @@ pub fn analyze_zip(
         }
         if has_double_extension(&name) {
             double_extension_count += 1;
-            if double_extension_evidence.len() < MAX_INDICATOR_EVIDENCE {
-                double_extension_evidence.push(name.clone());
-            }
+            push_evidence(&mut double_extension_evidence, &name);
         }
         maximum_depth = maximum_depth.max(depth);
         total_compressed = total_compressed.saturating_add(entry.compressed_size());
@@ -155,20 +173,37 @@ pub fn analyze_zip(
             ));
         }
 
+        local_header_offsets.push(entry.header_start());
         entries.push(ArchiveEntry {
             path: name,
+            display_path,
+            raw_name_hex,
+            path_normalization_changed,
             compressed_size: entry.compressed_size(),
             uncompressed_size: entry.size(),
             depth,
-            is_directory: entry.is_dir(),
+            is_directory,
             is_executable,
             is_archive,
-            suspicious_path,
+            suspicious_path: assessment.suspicious
+                || path_normalization_changed
+                || is_symlink
+                || is_special,
+            windows_path_key: assessment.windows_comparison_key,
+            is_encrypted: false,
+            is_symlink,
+            is_special,
+            has_ads: assessment.has_ads,
+            has_reserved_name: assessment.has_reserved_name,
+            has_trailing_dot_or_space: assessment.has_trailing_dot_or_space,
+            has_control_or_bidi: assessment.has_control_or_bidi,
+            path_collision: false,
+            file_directory_collision: false,
         });
     }
 
     token.checkpoint()?;
-    let file = archive.into_inner();
+    let mut file = archive.into_inner();
     let metadata_after = file.metadata().map_err(|error| {
         AnalysisFailure::io(format!(
             "Не удалось повторно проверить открытый ZIP-архив: {error}"
@@ -178,16 +213,70 @@ pub fn analyze_zip(
         return Err(AnalysisFailure::file_changed());
     }
 
+    let mut encryption_flags_read = 0_usize;
+    for (entry, offset) in entries.iter_mut().zip(local_header_offsets) {
+        token.checkpoint()?;
+        if let Some(encrypted) = read_local_header_encryption_flag(&mut file, offset) {
+            entry.is_encrypted = encrypted;
+            encryption_flags_read += 1;
+        }
+    }
+    mark_windows_path_collisions(&mut entries);
+
+    let entries_scanned = entries.len();
+    let encrypted_entries = entries.iter().filter(|entry| entry.is_encrypted).count();
+    let symlink_entries = entries.iter().filter(|entry| entry.is_symlink).count();
+    let special_entries = entries.iter().filter(|entry| entry.is_special).count();
+    let ads_entries = entries.iter().filter(|entry| entry.has_ads).count();
+    let reserved_name_entries = entries
+        .iter()
+        .filter(|entry| entry.has_reserved_name)
+        .count();
+    let trailing_dot_or_space_entries = entries
+        .iter()
+        .filter(|entry| entry.has_trailing_dot_or_space)
+        .count();
+    let control_or_bidi_entries = entries
+        .iter()
+        .filter(|entry| entry.has_control_or_bidi)
+        .count();
+    let normalization_changed_entries = entries
+        .iter()
+        .filter(|entry| entry.path_normalization_changed)
+        .count();
+    let path_collisions = entries.iter().filter(|entry| entry.path_collision).count();
+    let file_directory_collisions = entries
+        .iter()
+        .filter(|entry| entry.file_directory_collision)
+        .count();
+    let suspicious_paths = entries.iter().filter(|entry| entry.suspicious_path).count();
+
     let (compression_ratio, compression_ratio_infinite) =
         safe_compression_ratio(total_compressed, total_uncompressed);
 
+    if unreadable_entries > 0 {
+        append_truncated_summary(
+            &mut unreadable_entry_evidence,
+            unreadable_entries,
+            "непрочитанных записей",
+        );
+        indicators.push(indicator(
+            "archive.entry.metadata-unreadable",
+            "Часть ZIP-записей не удалось структурно прочитать",
+            "Central directory доступен, но metadata/content offset одной или нескольких записей повреждены или несовместимы. FileScope сохранил доступную часть отчёта вместо полного отказа.",
+            "analysis-status",
+            IndicatorSeverity::Info,
+            0,
+            unreadable_entry_evidence,
+            "Считайте структурную сводку частичной и не извлекайте архив обычным способом, пока повреждение не объяснено.",
+        ));
+    }
     if double_extension_count > 0 {
-        if double_extension_count > double_extension_evidence.len() {
-            double_extension_evidence.push(format!(
-                "…и ещё {} записей с двойным расширением",
-                double_extension_count - double_extension_evidence.len()
-            ));
-        }
+        append_truncated_summary(
+            &mut double_extension_evidence,
+            double_extension_count,
+            "записей с двойным расширением",
+        );
         indicators.push(indicator(
             "archive.entry.double-extension",
             "Файлы внутри архива маскируются двойным расширением",
@@ -199,21 +288,136 @@ pub fn analyze_zip(
             "Не извлекайте и не запускайте эти файлы.",
         ));
     }
-    if suspicious_paths > 0 {
+    if !traversal_evidence.is_empty() {
         indicators.push(indicator(
             "archive.path-traversal",
-            "Обнаружены опасные пути внутри архива",
-            "Некоторые записи могут попытаться выйти за выбранную папку распаковки или использовать абсолютный путь.",
+            "Обнаружены пути, выходящие за безопасную корневую область",
+            "Некоторые записи используют parent/absolute/drive semantics и не должны напрямую передаваться распаковщику.",
             "archive-path",
             IndicatorSeverity::Critical,
             70,
-            entries
-                .iter()
-                .filter(|entry| entry.suspicious_path)
-                .take(20)
-                .map(|entry| entry.path.clone())
-                .collect(),
-            "Не распаковывайте архив. Используйте изолированный просмотр или удалите объект.",
+            traversal_evidence,
+            "Не распаковывайте архив обычным способом. Проверяйте содержимое только в изолированной среде.",
+        ));
+    }
+    if ads_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.has_ads,
+            "archive.path.ads",
+            "Обнаружены NTFS Alternate Data Stream semantics",
+            "Двоеточие внутри имени записи может интерпретироваться Windows как ADS и скрывать дополнительный поток данных.",
+            IndicatorSeverity::High,
+            38,
+            "Не извлекайте такие записи на NTFS без безопасной нормализации имён.",
+        ));
+    }
+    if path_collisions > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.path_collision,
+            "archive.path.windows-collision",
+            "Имена записей конфликтуют после Windows-нормализации",
+            "Несколько ZIP-путей сводятся к одному Windows comparison key из-за регистра или trailing dot/space semantics.",
+            IndicatorSeverity::High,
+            32,
+            "Не распаковывайте архив поверх существующего каталога; конфликтующие имена могут перезаписывать друг друга.",
+        ));
+    }
+    if file_directory_collisions > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.file_directory_collision,
+            "archive.path.file-directory-collision",
+            "Один Windows-путь объявлен и файлом, и каталогом",
+            "ZIP содержит несовместимые типы записей для одного нормализованного пути.",
+            IndicatorSeverity::High,
+            36,
+            "Не распаковывайте архив обычным способом: результат зависит от поведения конкретного распаковщика.",
+        ));
+    }
+    if reserved_name_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.has_reserved_name,
+            "archive.path.windows-reserved-name",
+            "Используются зарезервированные Windows device names",
+            "Имена вроде CON, NUL, AUX, COM1 или LPT1 имеют специальные semantics в Windows и могут обрабатываться неожиданно.",
+            IndicatorSeverity::Medium,
+            18,
+            "Не извлекайте такие записи напрямую; используйте безопасный просмотр metadata.",
+        ));
+    }
+    if trailing_dot_or_space_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.has_trailing_dot_or_space,
+            "archive.path.trailing-dot-space",
+            "Имена различаются trailing dot/space semantics Windows",
+            "Windows может удалить конечные точки или пробелы и тем самым изменить фактический путь при распаковке.",
+            IndicatorSeverity::Medium,
+            14,
+            "Сравнивайте нормализованные пути до извлечения и не разрешайте перезапись коллизий.",
+        ));
+    }
+    if control_or_bidi_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.has_control_or_bidi,
+            "archive.path.control-bidi",
+            "В именах записей есть control/bidi characters",
+            "Невидимые или bidi-символы могут менять визуальное представление имени и затруднять ручную проверку.",
+            IndicatorSeverity::Medium,
+            18,
+            "Проверяйте исходное имя и нормализованное представление; не доверяйте только визуальному порядку символов.",
+        ));
+    }
+    if normalization_changed_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.path_normalization_changed,
+            "archive.path.normalized",
+            "Путь записи изменился при безопасной нормализации",
+            "FileScope сохранил исходные bytes и отображаемое имя, но заменил Windows-style разделители на канонический ZIP-путь для сопоставления и collision detection.",
+            IndicatorSeverity::Info,
+            0,
+            "Сравнивайте displayPath, path и rawNameHex в JSON-отчёте перед извлечением спорной записи.",
+        ));
+    }
+    if symlink_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.is_symlink,
+            "archive.entry.symlink",
+            "Архив содержит symbolic-link entries",
+            "Symlink внутри архива может изменить место назначения последующей распаковки. FileScope ссылку не извлекает и не переходит по ней.",
+            IndicatorSeverity::Medium,
+            24,
+            "Используйте распаковщик с явной политикой запрета ссылок для недоверенных архивов.",
+        ));
+    }
+    if special_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.is_special,
+            "archive.entry.special",
+            "Архив содержит special Unix-mode entries",
+            "Metadata записи указывает не на обычный файл, каталог или symlink.",
+            IndicatorSeverity::Medium,
+            22,
+            "Не материализуйте специальные entries из недоверенного архива.",
+        ));
+    }
+    if encrypted_entries > 0 {
+        indicators.push(indicator_for_entries(
+            &entries,
+            |entry| entry.is_encrypted,
+            "archive.entry.encrypted",
+            "Часть содержимого зашифрована",
+            "FileScope определил encryption flag из ZIP local headers, но не запрашивает пароль и не расшифровывает содержимое. Это повышает неопределённость анализа, но само по себе не является признаком вредоносности.",
+            IndicatorSeverity::Info,
+            0,
+            "Оценивайте происхождение архива и проверяйте зашифрованные файлы отдельно только в доверенной изолированной среде.",
         ));
     }
     if executable_entries > 0 {
@@ -265,7 +469,7 @@ pub fn analyze_zip(
             "archive.uncompressed-size.limit-exceeded",
             "Заявленный распакованный объём превышает лимит анализа",
             vec![
-                format!("Объём: {total_uncompressed} байт"),
+                format!("Объём просмотренной части: {total_uncompressed} байт"),
                 format!(
                     "Лимит анализа: {} байт",
                     limits.maximum_archive_uncompressed_bytes
@@ -291,11 +495,14 @@ pub fn analyze_zip(
         ));
     }
 
-    let completeness = if scan_count < archive_count
+    let stopped_by_limit = scan_count < archive_count
         || maximum_depth > limits.maximum_archive_depth
-        || total_uncompressed > limits.maximum_archive_uncompressed_bytes
-    {
+        || total_uncompressed > limits.maximum_archive_uncompressed_bytes;
+    let summary_complete = !stopped_by_limit && unreadable_entries == 0 && entries_scanned == archive_count;
+    let completeness = if stopped_by_limit {
         AnalysisCompleteness::StoppedByLimit
+    } else if unreadable_entries > 0 {
+        AnalysisCompleteness::Partial
     } else {
         AnalysisCompleteness::Complete
     };
@@ -311,8 +518,32 @@ pub fn analyze_zip(
         nested_archives,
         executable_entries,
         suspicious_paths,
+        entries_scanned,
+        summary_complete,
+        unreadable_entries,
+        encrypted_entries,
+        symlink_entries,
+        special_entries,
+        ads_entries,
+        reserved_name_entries,
+        trailing_dot_or_space_entries,
+        control_or_bidi_entries,
+        normalization_changed_entries,
+        path_collisions,
+        file_directory_collisions,
     };
     let (risk_score, risk_level) = calculate_risk(&indicators);
+    let mut limitations = vec![
+        "Содержимое записей не запускается и не извлекается на диск".to_string(),
+        "Зашифрованные записи определяются по metadata, но не расшифровываются и не проверяются по содержимому".to_string(),
+        "RAR и 7Z распознаются как тип файла, но структурно пока не разбираются".to_string(),
+    ];
+    if unreadable_entries > 0 {
+        limitations.push(
+            "Часть ZIP-записей имеет повреждённые или несовместимые local headers; сводка включает только успешно прочитанные записи"
+                .to_string(),
+        );
+    }
 
     Ok(AnalysisReport {
         schema_version: REPORT_SCHEMA_VERSION,
@@ -336,7 +567,11 @@ pub fn analyze_zip(
         indicators,
         metadata: json!({
             "contentExtractedToDisk": false,
-            "entriesRead": scan_count,
+            "entriesRead": entries_scanned,
+            "entriesAttempted": scan_count,
+            "entriesTotal": archive_count,
+            "summaryComplete": summary_complete,
+            "unreadableEntries": unreadable_entries,
             "entryLimitApplied": scan_count < archive_count,
             "backendCancellation": true,
             "jobTimeoutMs": limits.job_timeout_ms,
@@ -347,6 +582,15 @@ pub fn analyze_zip(
             "windowsShareMode": "FILE_SHARE_READ only; write/delete sharing denied",
             "networkPathPolicy": "UNC rejected",
             "doubleExtensionCount": double_extension_count,
+            "encryptedEntries": encrypted_entries,
+            "encryptionFlagsRead": encryption_flags_read,
+            "symlinkEntries": symlink_entries,
+            "specialEntries": special_entries,
+            "adsEntries": ads_entries,
+            "normalizationChangedEntries": normalization_changed_entries,
+            "pathCollisions": path_collisions,
+            "fileDirectoryCollisions": file_directory_collisions,
+            "rawEntryNameEncoding": "hex",
             "indicatorEvidenceLimit": MAX_INDICATOR_EVIDENCE,
             "appliedLimits": {
                 "maximumArchiveEntries": limits.maximum_archive_entries,
@@ -359,10 +603,7 @@ pub fn analyze_zip(
         url: None,
         archive: Some(analysis),
         is_demo: false,
-        limitations: vec![
-            "Содержимое записей не запускается и не извлекается на диск".to_string(),
-            "RAR и 7Z распознаются как тип файла, но структурно пока не разбираются".to_string(),
-        ],
+        limitations,
     })
 }
 
@@ -390,6 +631,98 @@ fn hash_open_archive(file: &mut File, token: &JobToken) -> Result<String, Analys
         ))
     })?;
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn read_local_header_encryption_flag(file: &mut File, header_start: u64) -> Option<bool> {
+    file.seek(SeekFrom::Start(header_start)).ok()?;
+    let mut prefix = [0_u8; 8];
+    file.read_exact(&mut prefix).ok()?;
+    if prefix[..4] != ZIP_LOCAL_HEADER_SIGNATURE {
+        return None;
+    }
+    let flags = u16::from_le_bytes([prefix[6], prefix[7]]);
+    Some(flags & ZIP_FLAG_ENCRYPTED != 0)
+}
+
+fn classify_unix_entry(unix_mode: Option<u32>, is_directory: bool) -> (bool, bool) {
+    let Some(mode) = unix_mode else {
+        return (false, false);
+    };
+    let file_type = mode & UNIX_FILE_TYPE_MASK;
+    if file_type == UNIX_SYMLINK {
+        return (true, false);
+    }
+    if file_type == 0
+        || file_type == UNIX_REGULAR_FILE
+        || file_type == UNIX_DIRECTORY
+        || (is_directory && file_type == 0)
+    {
+        return (false, false);
+    }
+    (false, true)
+}
+
+fn mark_windows_path_collisions(entries: &mut [ArchiveEntry]) {
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, entry) in entries.iter().enumerate() {
+        groups
+            .entry(entry.windows_path_key.clone())
+            .or_default()
+            .push(index);
+    }
+
+    for indexes in groups.values().filter(|indexes| indexes.len() > 1) {
+        let contains_directory = indexes.iter().any(|index| entries[*index].is_directory);
+        let contains_file = indexes.iter().any(|index| !entries[*index].is_directory);
+        let file_directory_collision = contains_directory && contains_file;
+        for index in indexes {
+            entries[*index].path_collision = true;
+            entries[*index].file_directory_collision = file_directory_collision;
+            entries[*index].suspicious_path = true;
+        }
+    }
+}
+
+fn push_evidence(evidence: &mut Vec<String>, value: &str) {
+    if evidence.len() < MAX_INDICATOR_EVIDENCE {
+        evidence.push(value.to_string());
+    }
+}
+
+fn append_truncated_summary(evidence: &mut Vec<String>, total: usize, label: &str) {
+    if total > evidence.len() {
+        evidence.push(format!("…и ещё {} {label}", total - evidence.len()));
+    }
+}
+
+fn indicator_for_entries(
+    entries: &[ArchiveEntry],
+    predicate: impl Fn(&ArchiveEntry) -> bool,
+    id: &str,
+    title: &str,
+    description: &str,
+    severity: IndicatorSeverity,
+    score: u16,
+    recommendation: &str,
+) -> ThreatIndicator {
+    let total = entries.iter().filter(|entry| predicate(entry)).count();
+    let mut evidence = entries
+        .iter()
+        .filter(|entry| predicate(entry))
+        .take(MAX_INDICATOR_EVIDENCE)
+        .map(|entry| entry.path.clone())
+        .collect::<Vec<_>>();
+    append_truncated_summary(&mut evidence, total, "записей");
+    indicator(
+        id,
+        title,
+        description,
+        "archive-path",
+        severity,
+        score,
+        evidence,
+        recommendation,
+    )
 }
 
 fn limit_indicator(id: &str, title: &str, evidence: Vec<String>) -> ThreatIndicator {
@@ -551,11 +884,39 @@ mod tests {
             &token,
         )
         .unwrap();
-        assert_eq!(report.archive.unwrap().total_entries, 1);
+        let archive = report.archive.unwrap();
+        assert_eq!(archive.total_entries, 1);
+        assert_eq!(archive.entries_scanned, 1);
+        assert!(archive.summary_complete);
         assert_eq!(report.metadata["contentExtractedToDisk"], false);
         assert_eq!(report.metadata["openedOnce"], true);
         assert_eq!(report.metadata["hashAndStructureSameHandle"], true);
         assert_eq!(report.sha256.as_deref().map(str::len), Some(64));
+    }
+
+    #[test]
+    fn preserves_raw_display_and_normalized_entry_names() {
+        let source_name = r"folder\payload.txt";
+        let file = make_zip(&[(source_name, b"hello")]);
+        let registry = JobRegistry::default();
+        let token = registry.start("zip-name-contract", 30_000).unwrap();
+        let report = analyze_zip(
+            file.path().to_string_lossy().to_string(),
+            AnalysisLimits::default(),
+            &token,
+        )
+        .unwrap();
+        let archive = report.archive.as_ref().unwrap();
+        let entry = &archive.entries[0];
+        assert_eq!(entry.display_path, source_name);
+        assert_eq!(entry.path, "folder/payload.txt");
+        assert_eq!(entry.raw_name_hex, hex::encode(source_name.as_bytes()));
+        assert!(entry.path_normalization_changed);
+        assert_eq!(archive.normalization_changed_entries, 1);
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| item.id == "archive.path.normalized" && item.score == 0));
     }
 
     #[test]
@@ -573,6 +934,44 @@ mod tests {
             .indicators
             .iter()
             .any(|item| item.id == "archive.entry.double-extension"));
+    }
+
+    #[test]
+    fn windows_path_anomalies_and_collisions_are_reported() {
+        let file = make_zip(&[
+            ("docs/readme.txt", b"one"),
+            ("Docs/README.TXT. ", b"two"),
+            ("payload/readme.txt:payload.exe", b"three"),
+            ("payload/CON.txt", b"four"),
+        ]);
+        let registry = JobRegistry::default();
+        let token = registry.start("zip-windows-paths", 30_000).unwrap();
+        let report = analyze_zip(
+            file.path().to_string_lossy().to_string(),
+            AnalysisLimits::default(),
+            &token,
+        )
+        .unwrap();
+        let archive = report.archive.as_ref().unwrap();
+        assert_eq!(archive.ads_entries, 1);
+        assert_eq!(archive.reserved_name_entries, 1);
+        assert!(archive.path_collisions >= 2);
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| item.id == "archive.path.ads"));
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| item.id == "archive.path.windows-collision"));
+    }
+
+    #[test]
+    fn unix_entry_classifier_distinguishes_symlink_and_special_types() {
+        assert_eq!(classify_unix_entry(Some(0o120777), false), (true, false));
+        assert_eq!(classify_unix_entry(Some(0o010666), false), (false, true));
+        assert_eq!(classify_unix_entry(Some(0o100644), false), (false, false));
+        assert_eq!(classify_unix_entry(Some(0o040755), true), (false, false));
     }
 
     #[test]
@@ -618,6 +1017,8 @@ mod tests {
             report.analysis_completeness,
             AnalysisCompleteness::StoppedByLimit
         );
+        assert_eq!(report.archive.as_ref().unwrap().entries_scanned, 1);
+        assert!(!report.archive.as_ref().unwrap().summary_complete);
         assert_eq!(report.risk_score, 0);
         assert_eq!(report.risk_level, RiskLevel::NoThreatsFound);
         assert!(report

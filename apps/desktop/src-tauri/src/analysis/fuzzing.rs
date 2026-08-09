@@ -1,11 +1,12 @@
 //! Safe, bounded entry points used only by cargo-fuzz targets.
 
-use std::io::Cursor;
+use std::{collections::HashSet, io::Cursor};
 
 use goblin::Object;
 use zip::ZipArchive;
 
 use super::{
+    archive_paths::assess_archive_path,
     jobs::JobRegistry,
     rules::{calculate_risk, indicator},
     types::{AnalysisReport, IndicatorSeverity},
@@ -132,29 +133,45 @@ pub fn zip_metadata(data: &[u8]) {
     let mut total_compressed = 0_u64;
     let mut total_uncompressed = 0_u64;
     let mut maximum_depth = 0_usize;
+    let mut windows_keys = HashSet::with_capacity(scan_count.min(MAXIMUM_FUZZ_ZIP_ENTRIES));
+    let mut windows_collisions = 0_usize;
 
     for index in 0..scan_count {
-        let Ok(entry) = archive.by_index(index) else {
+        let Ok(entry) = archive.by_index_raw(index) else {
             continue;
         };
-        let name = entry.name().replace('\\', "/");
-        let depth = name.split('/').filter(|part| !part.is_empty()).count();
-        let suspicious_path = entry.enclosed_name().is_none()
-            || name.starts_with('/')
-            || name.contains("../")
-            || name.contains(":/")
-            || name.contains(':');
+        let assessment = assess_archive_path(entry.name(), entry.enclosed_name().is_some());
+        let depth = assessment
+            .normalized_path
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .count();
 
         maximum_depth = maximum_depth.max(depth);
         total_compressed = total_compressed.saturating_add(entry.compressed_size());
         total_uncompressed = total_uncompressed.saturating_add(entry.size());
+        if !windows_keys.insert(assessment.windows_comparison_key.clone()) {
+            windows_collisions = windows_collisions.saturating_add(1);
+        }
         let _ = (
-            suspicious_path,
+            assessment.suspicious,
+            assessment.has_parent_or_absolute_path,
+            assessment.has_ads,
+            assessment.has_reserved_name,
+            assessment.has_trailing_dot_or_space,
+            assessment.has_control_or_bidi,
             entry.is_dir(),
+            entry.unix_mode(),
+            entry.header_start(),
             entry.compressed_size(),
             entry.size(),
         );
     }
 
-    let _ = (total_compressed, total_uncompressed, maximum_depth);
+    let _ = (
+        total_compressed,
+        total_uncompressed,
+        maximum_depth,
+        windows_collisions,
+    );
 }
