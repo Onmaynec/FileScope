@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "version": "0.4.0",
+  "validatedHeadSha": "0000000000000000000000000000000000000000",
+  "windowsArtifact": {
+    "name": "FileScope-Windows-x64",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "operator": "REPLACE_WITH_QA_OPERATOR",
+  "checkedAt": "2026-08-10T00:00:00Z",
+  "manualQa": {
+    "realV03MigrationRestartRollback": false,
+    "windowsPublicationProcessKill": false,
+    "windowsAclLockedFile": false,
+    "dpapiCrossUserOrMachine": false,
+    "portableAppData": false,
+    "fullClearRestart": false
+  },
+  "extendedFuzzRuns": []
+}
