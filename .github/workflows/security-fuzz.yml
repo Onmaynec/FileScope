@@ -7,6 +7,8 @@ on:
       - 'apps/desktop/src-tauri/src/analysis/**'
       - 'apps/desktop/src-tauri/fuzz/**'
       - '.github/workflows/security-fuzz.yml'
+  push:
+    branches: [fuzz-release-candidate]
   schedule:
     - cron: '23 3 * * 1'
   workflow_dispatch:
@@ -94,6 +96,7 @@ jobs:
             "runId": ${GITHUB_RUN_ID},
             "runAttempt": ${GITHUB_RUN_ATTEMPT},
             "event": "${GITHUB_EVENT_NAME}",
+            "ref": "${GITHUB_REF}",
             "headSha": "${GITHUB_SHA}",
             "secondsPerTarget": ${FUZZ_SECONDS},
             "conclusion": "success",
