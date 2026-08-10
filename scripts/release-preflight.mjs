@@ -62,13 +62,13 @@ validateGitBoundary(evidence.validatedHeadSha, evidencePath, releaseNotesPath);
 if (automated) {
   console.log(
     `Automated release gates OK for FileScope ${version}; validated source ${evidence.validatedHeadSha}, ` +
-      `${evidence.extendedFuzzRuns.length} extended fuzz runs, Windows artifact SHA-256 ${evidence.windowsArtifact.sha256}. ` +
+      `${evidence.extendedFuzzRuns.length} extended fuzz executions, Windows artifact SHA-256 ${evidence.windowsArtifact.sha256}. ` +
       'Only manual Windows QA gates remain before final release preflight.',
   );
 } else {
   console.log(
     `Release preflight OK for FileScope ${version}; validated source ${evidence.validatedHeadSha}, ` +
-      `${evidence.extendedFuzzRuns.length} extended fuzz runs, Windows artifact SHA-256 ${evidence.windowsArtifact.sha256}.`,
+      `${evidence.extendedFuzzRuns.length} extended fuzz executions, Windows artifact SHA-256 ${evidence.windowsArtifact.sha256}.`,
   );
 }
 
@@ -141,7 +141,7 @@ function validateEvidence(evidence, { requireExtended, requireManual, version })
     throw new Error('Release evidence extendedFuzzRuns must be an array.');
   }
   if (requireExtended && evidence.extendedFuzzRuns.length < 2) {
-    throw new Error('Release requires at least two successful extended fuzz runs.');
+    throw new Error('Release requires at least two successful extended fuzz executions.');
   }
 
   const expectedTargets = [
@@ -151,25 +151,37 @@ function validateEvidence(evidence, { requireExtended, requireManual, version })
     'file_format_and_pe',
     'zip_metadata',
   ];
-  const seenRunIds = new Set();
+  const seenExecutions = new Set();
   let exactHeadReleaseCandidateRun = false;
   for (const [index, run] of evidence.extendedFuzzRuns.entries()) {
     const prefix = `extendedFuzzRuns[${index}]`;
     if (!run || typeof run !== 'object' || Array.isArray(run)) throw new Error(`${prefix} must be an object.`);
     if (!Number.isSafeInteger(run.runId) || run.runId <= 0) throw new Error(`${prefix}.runId must be a positive integer.`);
-    if (seenRunIds.has(run.runId)) throw new Error(`${prefix}.runId is duplicated.`);
-    seenRunIds.add(run.runId);
     if (!Number.isSafeInteger(run.runAttempt) || run.runAttempt < 1) {
       throw new Error(`${prefix}.runAttempt must be >= 1.`);
     }
-    if (!['schedule', 'workflow_dispatch', 'push'].includes(run.event)) {
-      throw new Error(`${prefix}.event must be schedule, workflow_dispatch or push.`);
+    const executionKey = `${run.runId}:${run.runAttempt}`;
+    if (seenExecutions.has(executionKey)) throw new Error(`${prefix} duplicates execution ${executionKey}.`);
+    seenExecutions.add(executionKey);
+
+    if (!['schedule', 'workflow_dispatch', 'push', 'pull_request_rerun'].includes(run.event)) {
+      throw new Error(`${prefix}.event must be schedule, workflow_dispatch, push or pull_request_rerun.`);
     }
+    if (typeof run.rawEvent !== 'string' || run.rawEvent.length < 3) throw new Error(`${prefix}.rawEvent is required.`);
     if (typeof run.ref !== 'string' || run.ref.length < 3) throw new Error(`${prefix}.ref is required.`);
     if (run.event === 'push' && run.ref !== 'refs/heads/fuzz-release-candidate') {
       throw new Error(`${prefix}.push evidence is only accepted from refs/heads/fuzz-release-candidate.`);
     }
+    if (run.event === 'pull_request_rerun') {
+      if (run.rawEvent !== 'pull_request' || run.runAttempt < 2) {
+        throw new Error(`${prefix}.pull_request_rerun requires rawEvent=pull_request and runAttempt >= 2.`);
+      }
+      if (run.ref !== 'feature/v0.4.0') {
+        throw new Error(`${prefix}.pull_request_rerun evidence must come from feature/v0.4.0.`);
+      }
+    }
     requireSha(run.headSha, `${prefix}.headSha`);
+    requireSha(run.checkoutSha, `${prefix}.checkoutSha`);
     if (!Number.isSafeInteger(run.secondsPerTarget) || run.secondsPerTarget < 180) {
       throw new Error(`${prefix}.secondsPerTarget must be >= 180.`);
     }
@@ -182,6 +194,7 @@ function validateEvidence(evidence, { requireExtended, requireManual, version })
       throw new Error(`${prefix}.targets must contain exactly the five required fuzz targets.`);
     }
     const trustedExactEvent = run.event === 'workflow_dispatch' ||
+      run.event === 'pull_request_rerun' ||
       (run.event === 'push' && run.ref === 'refs/heads/fuzz-release-candidate');
     if (trustedExactEvent && run.headSha === evidence.validatedHeadSha) {
       exactHeadReleaseCandidateRun = true;
@@ -189,7 +202,7 @@ function validateEvidence(evidence, { requireExtended, requireManual, version })
   }
   if (requireExtended && !exactHeadReleaseCandidateRun) {
     throw new Error(
-      'Release requires at least one exact-head extended fuzz run via workflow_dispatch or refs/heads/fuzz-release-candidate.',
+      'Release requires at least one exact-head extended fuzz execution via workflow_dispatch, pull_request rerun or refs/heads/fuzz-release-candidate.',
     );
   }
 }
