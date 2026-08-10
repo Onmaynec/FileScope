@@ -4,6 +4,9 @@ import { relative, resolve } from 'node:path';
 
 const argumentsList = process.argv.slice(2);
 const development = argumentsList.includes('--development');
+const automated = argumentsList.includes('--automated');
+if (development && automated) throw new Error('--development and --automated cannot be combined.');
+
 const packageJson = readJson('package.json', 'package.json');
 const version = packageJson.version;
 
@@ -24,9 +27,9 @@ for (const file of [
 }
 
 const changelog = readFileSync('CHANGELOG.md', 'utf8');
-if (development) {
+if (development || automated) {
   if (!changelog.includes('## [Не выпущено]')) {
-    throw new Error('CHANGELOG must keep an unreleased section during development.');
+    throw new Error('CHANGELOG must keep an unreleased section before final release metadata is prepared.');
   }
 } else if (!changelog.includes(`## [${version}]`)) {
   throw new Error(`CHANGELOG section ${version} missing`);
@@ -37,29 +40,37 @@ execFileSync(process.execPath, ['scripts/check-v040-readiness.mjs'], { stdio: 'i
 execFileSync(process.execPath, ['scripts/check-v040-release-boundary.mjs'], { stdio: 'inherit' });
 
 const template = readJson(evidenceTemplatePath, evidenceTemplatePath);
-validateEvidence(template, { allowIncomplete: true, version });
+validateEvidence(template, { requireExtended: false, requireManual: false, version });
 
 if (development) {
-  console.log(`Release preflight structure OK for FileScope ${version} (development mode; manual release evidence is intentionally not accepted).`);
+  console.log(`Release preflight structure OK for FileScope ${version} (development mode; release evidence is intentionally not accepted).`);
   process.exit(0);
 }
 
 const evidencePath = resolveEvidencePath(argumentsList);
 if (!existsSync(evidencePath)) {
   throw new Error(
-    `Final release preflight requires structured QA evidence at ${evidencePath}. ` +
+    `${automated ? 'Automated' : 'Final'} release preflight requires structured QA evidence at ${evidencePath}. ` +
       'Pass --evidence <path> or FILESCOPE_RELEASE_EVIDENCE to override the default.',
   );
 }
 
 const evidence = readJson(evidencePath, evidencePath);
-validateEvidence(evidence, { allowIncomplete: false, version });
+validateEvidence(evidence, { requireExtended: true, requireManual: !automated, version });
 validateGitBoundary(evidence.validatedHeadSha, evidencePath, releaseNotesPath);
 
-console.log(
-  `Release preflight OK for FileScope ${version}; validated source ${evidence.validatedHeadSha}, ` +
-    `${evidence.extendedFuzzRuns.length} extended fuzz runs, Windows artifact SHA-256 ${evidence.windowsArtifact.sha256}.`,
-);
+if (automated) {
+  console.log(
+    `Automated release gates OK for FileScope ${version}; validated source ${evidence.validatedHeadSha}, ` +
+      `${evidence.extendedFuzzRuns.length} extended fuzz runs, Windows artifact SHA-256 ${evidence.windowsArtifact.sha256}. ` +
+      'Only manual Windows QA gates remain before final release preflight.',
+  );
+} else {
+  console.log(
+    `Release preflight OK for FileScope ${version}; validated source ${evidence.validatedHeadSha}, ` +
+      `${evidence.extendedFuzzRuns.length} extended fuzz runs, Windows artifact SHA-256 ${evidence.windowsArtifact.sha256}.`,
+  );
+}
 
 function resolveEvidencePath(args) {
   const index = args.indexOf('--evidence');
@@ -79,7 +90,7 @@ function readJson(path, label) {
   }
 }
 
-function validateEvidence(evidence, { allowIncomplete, version }) {
+function validateEvidence(evidence, { requireExtended, requireManual, version }) {
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
     throw new Error('Release evidence must be a JSON object.');
   }
@@ -121,7 +132,7 @@ function validateEvidence(evidence, { allowIncomplete, version }) {
     if (typeof evidence.manualQa[gate] !== 'boolean') {
       throw new Error(`manualQa.${gate} must be boolean.`);
     }
-    if (!allowIncomplete && evidence.manualQa[gate] !== true) {
+    if (requireManual && evidence.manualQa[gate] !== true) {
       throw new Error(`Final release blocked: manualQa.${gate} is not confirmed.`);
     }
   }
@@ -129,8 +140,8 @@ function validateEvidence(evidence, { allowIncomplete, version }) {
   if (!Array.isArray(evidence.extendedFuzzRuns)) {
     throw new Error('Release evidence extendedFuzzRuns must be an array.');
   }
-  if (!allowIncomplete && evidence.extendedFuzzRuns.length < 2) {
-    throw new Error('Final release requires at least two successful extended fuzz runs.');
+  if (requireExtended && evidence.extendedFuzzRuns.length < 2) {
+    throw new Error('Release requires at least two successful extended fuzz runs.');
   }
 
   const expectedTargets = [
@@ -141,7 +152,7 @@ function validateEvidence(evidence, { allowIncomplete, version }) {
     'zip_metadata',
   ];
   const seenRunIds = new Set();
-  let exactHeadManualRun = false;
+  let exactHeadReleaseCandidateRun = false;
   for (const [index, run] of evidence.extendedFuzzRuns.entries()) {
     const prefix = `extendedFuzzRuns[${index}]`;
     if (!run || typeof run !== 'object' || Array.isArray(run)) throw new Error(`${prefix} must be an object.`);
@@ -151,8 +162,12 @@ function validateEvidence(evidence, { allowIncomplete, version }) {
     if (!Number.isSafeInteger(run.runAttempt) || run.runAttempt < 1) {
       throw new Error(`${prefix}.runAttempt must be >= 1.`);
     }
-    if (!['schedule', 'workflow_dispatch'].includes(run.event)) {
-      throw new Error(`${prefix}.event must be schedule or workflow_dispatch.`);
+    if (!['schedule', 'workflow_dispatch', 'push'].includes(run.event)) {
+      throw new Error(`${prefix}.event must be schedule, workflow_dispatch or push.`);
+    }
+    if (typeof run.ref !== 'string' || run.ref.length < 3) throw new Error(`${prefix}.ref is required.`);
+    if (run.event === 'push' && run.ref !== 'refs/heads/fuzz-release-candidate') {
+      throw new Error(`${prefix}.push evidence is only accepted from refs/heads/fuzz-release-candidate.`);
     }
     requireSha(run.headSha, `${prefix}.headSha`);
     if (!Number.isSafeInteger(run.secondsPerTarget) || run.secondsPerTarget < 180) {
@@ -166,12 +181,16 @@ function validateEvidence(evidence, { allowIncomplete, version }) {
     if (normalizedTargets.length !== expected.length || normalizedTargets.some((value, targetIndex) => value !== expected[targetIndex])) {
       throw new Error(`${prefix}.targets must contain exactly the five required fuzz targets.`);
     }
-    if (run.event === 'workflow_dispatch' && run.headSha === evidence.validatedHeadSha) {
-      exactHeadManualRun = true;
+    const trustedExactEvent = run.event === 'workflow_dispatch' ||
+      (run.event === 'push' && run.ref === 'refs/heads/fuzz-release-candidate');
+    if (trustedExactEvent && run.headSha === evidence.validatedHeadSha) {
+      exactHeadReleaseCandidateRun = true;
     }
   }
-  if (!allowIncomplete && !exactHeadManualRun) {
-    throw new Error('Final release requires at least one workflow_dispatch extended fuzz run on validatedHeadSha.');
+  if (requireExtended && !exactHeadReleaseCandidateRun) {
+    throw new Error(
+      'Release requires at least one exact-head extended fuzz run via workflow_dispatch or refs/heads/fuzz-release-candidate.',
+    );
   }
 }
 
@@ -195,6 +214,7 @@ function validateGitBoundary(validatedHeadSha, evidencePath, releaseNotesPath) {
     releaseNotesPath,
     'CHANGELOG.md',
     '.github/release-request.json',
+    'docs/product/v0.4.0-readiness-checklist.md',
   ]);
   const forbidden = changedFiles.filter((file) => !allowedMetadata.has(file));
   if (forbidden.length) {
