@@ -27,8 +27,11 @@ if (existsSync('scripts/release-preflight.mjs')) {
     'portableAppData',
     'fullClearRestart',
     'evidence.extendedFuzzRuns.length < 2',
-    "['schedule', 'workflow_dispatch', 'push']",
+    "['schedule', 'workflow_dispatch', 'push', 'pull_request_rerun']",
     "run.ref !== 'refs/heads/fuzz-release-candidate'",
+    "run.ref !== 'feature/v0.4.0'",
+    'run.runAttempt < 2',
+    'const executionKey = `${run.runId}:${run.runAttempt}`',
     'run.headSha === evidence.validatedHeadSha',
     'run.secondsPerTarget < 180',
     'run.crashArtifacts !== 0',
@@ -88,20 +91,29 @@ if (existsSync('.github/workflows/security-fuzz.yml')) {
   const fuzz = readFileSync('.github/workflows/security-fuzz.yml', 'utf8');
   for (const literal of [
     'branches: [fuzz-release-candidate]',
+    'GITHUB_RUN_ATTEMPT',
     'seconds=20',
     'seconds=180',
-    "success() && github.event_name != 'pull_request'",
-    'FileScope-fuzz-evidence-${{ github.run_id }}',
+    'extended=false',
+    'extended=true',
+    'evidence_event=pull_request_rerun',
+    "success() && steps.budget.outputs.extended == 'true'",
+    'FileScope-fuzz-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
     'fuzz-evidence/run.json',
-    '"ref": "${GITHUB_REF}"',
+    'SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}',
+    'SOURCE_REF: ${{ github.event.pull_request.head.ref || github.ref }}',
+    '"rawEvent": "${GITHUB_EVENT_NAME}"',
+    '"ref": "${SOURCE_REF}"',
+    '"headSha": "${SOURCE_SHA}"',
+    '"checkoutSha": "${GITHUB_SHA}"',
     '"secondsPerTarget": ${FUZZ_SECONDS}',
     '"crashArtifacts": 0',
-    'FileScope-fuzz-crashes-${{ github.run_id }}',
+    'FileScope-fuzz-crashes-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
   ]) {
     if (!fuzz.includes(literal)) errors.push(`security-fuzz.yml missing ${literal}`);
   }
-  requireNearby(fuzz, 'FileScope-fuzz-evidence-${{ github.run_id }}', 'retention-days: 3', 600, 'extended fuzz metadata retention must be <= 3 days');
-  requireNearby(fuzz, 'FileScope-fuzz-crashes-${{ github.run_id }}', 'retention-days: 3', 600, 'fuzz crash retention must be <= 3 days');
+  requireNearby(fuzz, 'FileScope-fuzz-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}', 'retention-days: 3', 700, 'extended fuzz metadata retention must be <= 3 days');
+  requireNearby(fuzz, 'FileScope-fuzz-crashes-${{ github.run_id }}-attempt-${{ github.run_attempt }}', 'retention-days: 3', 700, 'fuzz crash retention must be <= 3 days');
   for (const target of ['report_deserialization', 'passive_url', 'rule_engine', 'file_format_and_pe', 'zip_metadata']) {
     if (!fuzz.includes(`cargo fuzz run ${target}`)) errors.push(`security-fuzz.yml missing target ${target}`);
     if (!fuzz.includes(`"${target}"`)) errors.push(`extended fuzz evidence missing target ${target}`);
