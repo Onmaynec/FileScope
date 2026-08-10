@@ -26,19 +26,22 @@ if (existsSync('scripts/release-preflight.mjs')) {
     'dpapiCrossUserOrMachine',
     'portableAppData',
     'fullClearRestart',
-    'extendedFuzzRuns.length < 2',
-    "run.event === 'workflow_dispatch'",
+    'evidence.extendedFuzzRuns.length < 2',
+    "['schedule', 'workflow_dispatch', 'push']",
+    "run.ref !== 'refs/heads/fuzz-release-candidate'",
     'run.headSha === evidence.validatedHeadSha',
     'run.secondsPerTarget < 180',
     'run.crashArtifacts !== 0',
+    'Only manual Windows QA gates remain before final release preflight.',
     'Release source changed after validatedHeadSha',
     "'CHANGELOG.md'",
     "'.github/release-request.json'",
+    "'docs/product/v0.4.0-readiness-checklist.md'",
   ]) {
     if (!preflight.includes(literal)) errors.push(`release-preflight.mjs missing ${literal}`);
   }
   if (!preflight.includes("changelog.includes('## [Не выпущено]')")) {
-    errors.push('development preflight must require the unreleased changelog section');
+    errors.push('development/automated preflight must require the unreleased changelog section');
   }
   if (!preflight.includes('changelog.includes(`## [${version}]`)')) {
     errors.push('final preflight must require the versioned changelog section');
@@ -53,12 +56,21 @@ if (existsSync('package.json')) {
   if (pkg.scripts?.['release:preflight:development'] !== 'node scripts/release-preflight.mjs --development') {
     errors.push('package.json release:preflight:development must stay explicitly development-only');
   }
+  if (pkg.scripts?.['release:preflight:automated'] !== 'node scripts/release-preflight.mjs --automated') {
+    errors.push('package.json release:preflight:automated must validate recorded automated evidence');
+  }
 }
 
 if (existsSync('.github/workflows/ci.yml')) {
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
   if (!ci.includes('pnpm release:preflight:development')) {
     errors.push('ci.yml must execute development release preflight');
+  }
+  if (!ci.includes('pnpm release:preflight:automated')) {
+    errors.push('ci.yml must validate automated evidence when the release evidence file exists');
+  }
+  if (!ci.includes("test -f .github/release-evidence/v0.4.0.json")) {
+    errors.push('ci.yml automated evidence gate must be conditional on the committed evidence file');
   }
 }
 
@@ -67,19 +79,21 @@ if (existsSync('.github/workflows/release.yml')) {
   if (!releaseWorkflow.includes('pnpm release:preflight')) {
     errors.push('release.yml must execute final release preflight');
   }
-  if (releaseWorkflow.includes('pnpm release:preflight:development')) {
-    errors.push('release.yml must never substitute development preflight for final preflight');
+  if (releaseWorkflow.includes('pnpm release:preflight:development') || releaseWorkflow.includes('pnpm release:preflight:automated')) {
+    errors.push('release.yml must never substitute a non-final preflight for final preflight');
   }
 }
 
 if (existsSync('.github/workflows/security-fuzz.yml')) {
   const fuzz = readFileSync('.github/workflows/security-fuzz.yml', 'utf8');
   for (const literal of [
+    'branches: [fuzz-release-candidate]',
     'seconds=20',
     'seconds=180',
     "success() && github.event_name != 'pull_request'",
     'FileScope-fuzz-evidence-${{ github.run_id }}',
     'fuzz-evidence/run.json',
+    '"ref": "${GITHUB_REF}"',
     '"secondsPerTarget": ${FUZZ_SECONDS}',
     '"crashArtifacts": 0',
     'FileScope-fuzz-crashes-${{ github.run_id }}',
