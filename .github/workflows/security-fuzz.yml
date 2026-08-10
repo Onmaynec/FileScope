@@ -1,0 +1,144 @@
+name: Security fuzz smoke
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'apps/desktop/src-tauri/src/analysis/**'
+      - 'apps/desktop/src-tauri/fuzz/**'
+      - '.github/workflows/security-fuzz.yml'
+  push:
+    branches: [fuzz-release-candidate]
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz-smoke:
+    name: Bounded cargo-fuzz smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Установить системные зависимости Tauri
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev
+
+      - name: Установить nightly Rust
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # pinned revision
+        with:
+          toolchain: nightly
+
+      - name: Установить cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+
+      - name: Выбрать bounded budget
+        id: budget
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$GITHUB_RUN_ATTEMPT" == "1" ]]; then
+            echo "seconds=20" >> "$GITHUB_OUTPUT"
+            echo "extended=false" >> "$GITHUB_OUTPUT"
+            echo "evidence_event=pull_request_smoke" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "seconds=180" >> "$GITHUB_OUTPUT"
+            echo "extended=true" >> "$GITHUB_OUTPUT"
+            echo "evidence_event=pull_request_rerun" >> "$GITHUB_OUTPUT"
+          else
+            echo "seconds=180" >> "$GITHUB_OUTPUT"
+            echo "extended=true" >> "$GITHUB_OUTPUT"
+            echo "evidence_event=$GITHUB_EVENT_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Проверить десериализацию отчётов
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run report_deserialization -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=262144 -rss_limit_mb=1024
+
+      - name: Проверить пассивный URL-анализ
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run passive_url -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=4096 -rss_limit_mb=1024
+
+      - name: Проверить Rule Engine
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run rule_engine -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=65536 -rss_limit_mb=1024
+
+      - name: Проверить magic/type detection и PE parser
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run file_format_and_pe -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=1048576 -rss_limit_mb=1024
+
+      - name: Проверить ZIP metadata и path handling
+        working-directory: apps/desktop/src-tauri
+        run: cargo fuzz run zip_metadata -- -max_total_time=${{ steps.budget.outputs.seconds }} -timeout=10 -max_len=2097152 -rss_limit_mb=1024
+
+      - name: Сформировать evidence успешного extended fuzz
+        if: success() && steps.budget.outputs.extended == 'true'
+        shell: bash
+        env:
+          FUZZ_SECONDS: ${{ steps.budget.outputs.seconds }}
+          EVIDENCE_EVENT: ${{ steps.budget.outputs.evidence_event }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_REF: ${{ github.event.pull_request.head.ref || github.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p fuzz-evidence
+          cat > fuzz-evidence/run.json <<EOF
+          {
+            "schemaVersion": 1,
+            "runId": ${GITHUB_RUN_ID},
+            "runAttempt": ${GITHUB_RUN_ATTEMPT},
+            "event": "${EVIDENCE_EVENT}",
+            "rawEvent": "${GITHUB_EVENT_NAME}",
+            "ref": "${SOURCE_REF}",
+            "headSha": "${SOURCE_SHA}",
+            "checkoutSha": "${GITHUB_SHA}",
+            "secondsPerTarget": ${FUZZ_SECONDS},
+            "conclusion": "success",
+            "crashArtifacts": 0,
+            "targets": [
+              "report_deserialization",
+              "passive_url",
+              "rule_engine",
+              "file_format_and_pe",
+              "zip_metadata"
+            ]
+          }
+          EOF
+          cat fuzz-evidence/run.json
+
+      - name: Сохранить metadata успешного extended fuzz
+        if: success() && steps.budget.outputs.extended == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FileScope-fuzz-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: fuzz-evidence/run.json
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Сохранить crash inputs только при ошибке
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FileScope-fuzz-crashes-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: apps/desktop/src-tauri/fuzz/artifacts
+          if-no-files-found: ignore
+          retention-days: 3

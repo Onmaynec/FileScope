@@ -20,7 +20,7 @@ import {
 import { inspectLocalPaths } from '../api/local-path-api';
 import { saveReport } from '../model/analysis-storage';
 import {
-  appendUniqueQueueItems,
+  appendUniqueQueueItemsDetailed,
   confirmQueueCancellation,
   createQueueItem,
   isFinishedStatus,
@@ -81,6 +81,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   const [reports, setReports] = useState<Record<string, AnalysisReport>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [queueNotice, setQueueNotice] = useState('');
   const [running, setRunning] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -92,15 +93,21 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   const dropzoneRef = useRef<HTMLButtonElement>(null);
   const stopRequestedRef = useRef(false);
   const detailScrollRef = useRef<HTMLDivElement>(null);
+  const manualSelectionRef = useRef(false);
+  const queueRef = useRef<AnalysisQueueItem[]>([]);
 
   useEffect(() => setMode(initialMode), [initialMode]);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => {
     if (!initialPath) return;
     setPath(initialPath);
     const displayName = fileName(initialPath);
     const item = createQueueItem('file', initialPath, displayName);
-    setQueue((current) => appendUniqueQueueItems(current, [item]));
-    setSelectedId((current) => current ?? item.id);
+    const appended = appendUniqueQueueItemsDetailed(queueRef.current, [item]);
+    queueRef.current = appended.queue;
+    setQueue(appended.queue);
+    const actual = appended.added[0] ?? appended.duplicates[0]?.existing;
+    setSelectedId((current) => current ?? actual?.id ?? null);
   }, [initialPath]);
 
   const pendingCount = queue.filter((item) => item.status === 'pending').length;
@@ -114,6 +121,13 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   const activeItem = queue.find((item) => item.id === activeId);
   const selectedItem = queue.find((item) => item.id === selectedId) ?? null;
   const selectedReport = selectedItem?.reportId ? reports[selectedItem.reportId] : undefined;
+
+  useEffect(() => {
+    if (selectedId && !queue.some((item) => item.id === selectedId)) {
+      manualSelectionRef.current = false;
+      setSelectedId(null);
+    }
+  }, [queue, selectedId]);
 
   useEffect(() => {
     if (detailScrollRef.current) detailScrollRef.current.scrollTop = 0;
@@ -138,6 +152,11 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   );
   const selectedCompletedIndex = completedItems.findIndex((item) => item.id === selectedId);
 
+  const showQueueNotice = useCallback((message: string) => {
+    setQueueNotice(message);
+    window.setTimeout(() => setQueueNotice(''), 2400);
+  }, []);
+
   const addCandidates = useCallback((paths: string[], source: 'dialog' | 'drop') => {
     if (!paths.length) return;
     void (async () => {
@@ -145,19 +164,26 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
       const candidates = await inspectLocalPaths(paths, mode === 'archive');
       const accepted = candidates.filter((item) => item.accepted);
       const rejected = candidates.filter((item) => !item.accepted);
+      let addedCount = 0;
+      let duplicateCount = 0;
       if (accepted.length) {
         const items = accepted.map((item) => createQueueItem(mode === 'archive' ? 'archive' : 'file', item.path, item.displayName));
-        setQueue((current) => appendUniqueQueueItems(current, items));
-        setSelectedId((current) => current ?? items[0]?.id ?? null);
+        const appended = appendUniqueQueueItemsDetailed(queueRef.current, items);
+        queueRef.current = appended.queue;
+        setQueue(appended.queue);
+        addedCount = appended.added.length;
+        duplicateCount = appended.duplicates.length;
+        const actual = appended.added[0] ?? appended.duplicates[0]?.existing;
+        setSelectedId((current) => current ?? actual?.id ?? null);
         setPath(accepted[0]?.path ?? '');
       }
-      if (rejected.length) {
-        const reason = rejected[0]?.reason ?? 'Часть объектов отклонена.';
-        setDropState(accepted.length ? 'success' : 'rejected');
-        setDropMessage(`Добавлено: ${accepted.length}. Отклонено: ${rejected.length}. ${reason}`);
+      const firstReason = rejected[0]?.reason;
+      if (rejected.length || duplicateCount) {
+        setDropState(addedCount ? 'success' : 'rejected');
+        setDropMessage(`Добавлено: ${addedCount}. Дубликатов: ${duplicateCount}. Отклонено: ${rejected.length}.${firstReason ? ` ${firstReason}` : ''}`);
       } else {
         setDropState('success');
-        setDropMessage(`Добавлено в очередь: ${accepted.length}. Анализ не запущен автоматически.`);
+        setDropMessage(`Добавлено в очередь: ${addedCount}. Анализ не запущен автоматически.`);
       }
       window.setTimeout(() => setDropState('idle'), 2400);
     })().catch((reason: unknown) => {
@@ -195,8 +221,16 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
   const enqueueUrl = () => {
     if (!url.trim() || (activeNetwork && !networkConsent)) return;
     const item = createQueueItem('url', url.trim(), urlDisplayName(url), activeNetwork);
-    setQueue((current) => appendUniqueQueueItems(current, [item]));
-    setSelectedId(item.id);
+    const appended = appendUniqueQueueItemsDetailed(queueRef.current, [item]);
+    queueRef.current = appended.queue;
+    setQueue(appended.queue);
+    const actual = appended.added[0] ?? appended.duplicates[0]?.existing;
+    if (actual) {
+      manualSelectionRef.current = true;
+      setSelectedId(actual.id);
+      setMobilePane('details');
+    }
+    if (appended.duplicates.length) showQueueNotice('Объект уже находится в активной очереди. Выбрана существующая строка.');
     setError('');
   };
 
@@ -223,9 +257,12 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
     if (!pendingQueueItems(preparedQueue).length) {
       const item = currentItem();
       if (!item) return;
-      preparedQueue = appendUniqueQueueItems(preparedQueue, [item]);
+      const appended = appendUniqueQueueItemsDetailed(preparedQueue, [item]);
+      preparedQueue = appended.queue;
+      queueRef.current = preparedQueue;
       setQueue(preparedQueue);
-      setSelectedId(item.id);
+      const actual = appended.added[0] ?? appended.duplicates[0]?.existing;
+      if (actual) setSelectedId(actual.id);
     }
 
     const items = pendingQueueItems(preparedQueue);
@@ -237,8 +274,10 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
     for (const item of items) {
       if (stopRequestedRef.current) break;
       setActiveId(item.id);
-      setSelectedId(item.id);
-      setMobilePane('details');
+      if (!manualSelectionRef.current) {
+        setSelectedId(item.id);
+        setMobilePane('details');
+      }
       setQueue((current) => updateQueueItem(current, item.id, {
         status: 'running',
         startedAt: new Date().toISOString(),
@@ -251,7 +290,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
 
       try {
         const result = await runItem(item);
-        saveReport(result);
+        await saveReport(result);
         setReports((current) => ({ ...current, [result.id]: result }));
         setQueue((current) => updateQueueItem(current, item.id, {
           status: 'completed',
@@ -313,7 +352,10 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
       delete next[item.reportId!];
       return next;
     });
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === id) {
+      manualSelectionRef.current = false;
+      setSelectedId(null);
+    }
   };
 
   const retryItem = (id: string) => {
@@ -321,6 +363,7 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
     if (!previous) return;
     const retry = createQueueItem(previous.kind, previous.target, previous.displayName, previous.activeNetwork);
     setQueue((current) => current.map((item) => item.id === id ? retry : item));
+    manualSelectionRef.current = true;
     setSelectedId(retry.id);
   };
 
@@ -328,7 +371,14 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
     if (!completedItems.length) return;
     const current = selectedCompletedIndex >= 0 ? selectedCompletedIndex : 0;
     const next = Math.min(completedItems.length - 1, Math.max(0, current + offset));
+    manualSelectionRef.current = true;
     setSelectedId(completedItems[next]?.id ?? null);
+    setMobilePane('details');
+  };
+
+  const selectExplicitly = (id: string) => {
+    manualSelectionRef.current = true;
+    setSelectedId(id);
     setMobilePane('details');
   };
 
@@ -372,6 +422,8 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
       </div>
     </section>
 
+    {queueNotice && <section className="status-banner" role="status"><ListChecks /><div><strong>Очередь не изменена</strong><span>{queueNotice}</span></div></section>}
+
     {queue.length > 0 && <>
       <div className="analysis-mobile-panes" role="tablist" aria-label="Область очереди">
         <button role="tab" aria-selected={mobilePane === 'queue'} className={mobilePane === 'queue' ? 'active' : ''} onClick={() => setMobilePane('queue')}>Очередь</button>
@@ -390,18 +442,18 @@ export function AnalysisWorkspace({ initialMode = 'file', initialPath = '', limi
             items={filteredQueue}
             selectedId={selectedId}
             activeId={activeId}
-            onSelect={(id) => { setSelectedId(id); setMobilePane('details'); }}
+            onSelect={selectExplicitly}
             onRemove={removeItem}
             onRetry={retryItem}
           />
-          <div className="analysis-queue__footer"><span>Показано: {filteredQueue.length} из {queue.length}</span><button className="button button-secondary" disabled={running || finishedCount === 0} onClick={() => { setQueue((current) => removeFinishedQueueItems(current)); setSelectedId(null); }}><Trash2 />Очистить завершённые</button></div>
+          <div className="analysis-queue__footer"><span>Показано: {filteredQueue.length} из {queue.length}</span><button className="button button-secondary" disabled={running || finishedCount === 0} onClick={() => { manualSelectionRef.current = false; setQueue((current) => removeFinishedQueueItems(current)); setSelectedId(null); }}><Trash2 />Очистить завершённые</button></div>
         </aside>
 
         <section className={`card analysis-detail-pane ${mobilePane === 'details' ? 'mobile-active' : ''}`} aria-label="Детали выбранного задания">
           <header className="analysis-detail-toolbar">
             <div><strong>{selectedItem?.displayName ?? 'Выберите задание'}</strong><span>{selectedItem ? `${statusLabels[selectedItem.status]}${selectedItem.riskScore !== undefined ? ` · риск ${selectedItem.riskScore}/100` : ''}` : 'Очередь готова к работе'}</span></div>
             <div className="analysis-detail-navigation">
-              <button className="button button-secondary" disabled={!activeId} onClick={() => { if (activeId) { setSelectedId(activeId); setMobilePane('details'); } }}>К текущему</button>
+              <button className="button button-secondary" disabled={!activeId} onClick={() => { if (activeId) selectExplicitly(activeId); }}>К текущему</button>
               <button className="icon-button" aria-label="Предыдущий завершённый отчёт" disabled={!completedItems.length || selectedCompletedIndex <= 0} onClick={() => navigateCompleted(-1)}><ChevronLeft /></button>
               <span>{selectedCompletedIndex >= 0 ? `${selectedCompletedIndex + 1}/${completedItems.length}` : `0/${completedItems.length}`}</span>
               <button className="icon-button" aria-label="Следующий завершённый отчёт" disabled={!completedItems.length || selectedCompletedIndex < 0 || selectedCompletedIndex >= completedItems.length - 1} onClick={() => navigateCompleted(1)}><ChevronRight /></button>

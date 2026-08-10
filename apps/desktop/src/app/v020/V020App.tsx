@@ -4,6 +4,7 @@ import {
   Home, Info, Menu, Search, Settings, ShieldCheck, Upload,
 } from 'lucide-react';
 import { AnalysisSettings } from '../../features/analysis/ui/AnalysisSettings';
+import { HistoryPrivacySettings } from '../../features/analysis/ui/HistoryPrivacySettings';
 import { AnalysisWorkspace } from '../../features/analysis/ui/AnalysisWorkspace';
 import { ReportHistory } from '../../features/analysis/ui/ReportHistory';
 import { loadAnalysisLimits, loadReports } from '../../features/analysis/model/analysis-storage';
@@ -117,7 +118,16 @@ function AnalysisPage({ mode, path, limits, onReport }: { mode: ObjectKind; path
 }
 
 function HomePage({ navigate, chooseFile }: { navigate: (page: Page) => void; chooseFile: () => Promise<void> }) {
-  const reportCount = loadReports().length;
+  const [reportCount, setReportCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void loadReports().then((reports) => {
+      if (active) setReportCount(reports.length);
+    });
+    return () => { active = false; };
+  }, []);
+
   return <>
     <section className="v020-hero"><div><span className="analysis-kicker">FileScope Core v{APP_VERSION}</span><h1>Реальный анализ до запуска</h1><p>Вычисляйте SHA-256, проверяйте типы файлов, PE-структуру, URL и ZIP-архивы локально. Исследуемые объекты не запускаются и не отправляются наружу.</p><div className="button-row"><button className="button button-primary" onClick={() => void chooseFile()}><Upload />Выбрать файл</button><button className="button button-secondary" onClick={() => navigate('links')}><Globe2 />Проверить URL</button></div></div><div className="v020-hero__shield"><ShieldCheck /><span>Local-first</span><strong>0 внешних загрузок файлов</strong></div></section>
     <section className="quick-grid"><button className="action-card" onClick={() => navigate('files')}><FileSearch /><strong>Файлы</strong><span>Атомарный SHA-256, сигнатуры, PE и энтропия.</span></button><button className="action-card" onClick={() => navigate('links')}><Globe2 /><strong>URL</strong><span>Канонический Rust-разбор и защищённая ручная сеть.</span></button><button className="action-card" onClick={() => navigate('archives')}><Archive /><strong>ZIP-архивы</strong><span>Пути, глубина, степень сжатия и вложенные объекты.</span></button><button className="action-card" onClick={() => navigate('reports')}><BarChart3 /><strong>Отчёты</strong><span>{reportCount ? `Сохранено локально: ${reportCount}` : 'История пока пуста.'}</span></button></section>
@@ -126,7 +136,7 @@ function HomePage({ navigate, chooseFile }: { navigate: (page: Page) => void; ch
 }
 
 function SettingsPage({ limits, setLimits, theme, setTheme, closeBehavior, setCloseBehavior }: { limits: AnalysisLimits; setLimits: (limits: AnalysisLimits) => void; theme: 'system' | 'dark' | 'light'; setTheme: (theme: 'system' | 'dark' | 'light') => void; closeBehavior: 'tray' | 'quit'; setCloseBehavior: (value: 'tray' | 'quit') => void }) {
-  return <><PageHeader title="Настройки" text="Настройки интерфейса и защитных ограничений сохраняются локально." /><section className="card settings-v020"><h2>Интерфейс и окно</h2><div className="setting-row"><div><strong>Тема</strong><span>Системная, светлая или тёмная.</span></div><Select label="Тема приложения" value={theme} options={themeOptions} onChange={setTheme} /></div><div className="setting-row"><div><strong>При закрытии окна</strong><span>Крестик скрывает приложение в трей или полностью завершает процесс.</span></div><Select label="Поведение при закрытии" value={closeBehavior} options={closeOptions} onChange={setCloseBehavior} /></div><div className="setting-row"><div><strong>Версия приложения</strong><span>Единый build-time источник для интерфейса, отчётов и экспорта.</span></div><span className="badge neutral">{APP_VERSION}</span></div></section><AnalysisSettings value={limits} onChange={setLimits} /></>;
+  return <><PageHeader title="Настройки" text="Настройки интерфейса и защитных ограничений сохраняются локально." /><section className="card settings-v020"><h2>Интерфейс и окно</h2><div className="setting-row"><div><strong>Тема</strong><span>Системная, светлая или тёмная.</span></div><Select label="Тема приложения" value={theme} options={themeOptions} onChange={setTheme} /></div><div className="setting-row"><div><strong>При закрытии окна</strong><span>Крестик скрывает приложение в трей или полностью завершает процесс.</span></div><Select label="Поведение при закрытии" value={closeBehavior} options={closeOptions} onChange={setCloseBehavior} /></div><div className="setting-row"><div><strong>Версия приложения</strong><span>Единый build-time источник для интерфейса, отчётов и экспорта.</span></div><span className="badge neutral">{APP_VERSION}</span></div></section><HistoryPrivacySettings /><AnalysisSettings value={limits} onChange={setLimits} /></>;
 }
 
 function AboutPage() {

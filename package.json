@@ -1,7 +1,7 @@
 {
   "name": "filescope",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "FileScope desktop application by Veilbyte",
   "author": "Veilbyte",
   "license": "SEE LICENSE IN LICENSE",
@@ -23,6 +23,12 @@
     "check:bugfix": "pnpm check:version && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "check:v040-readiness": "node scripts/check-v040-readiness.mjs",
+    "release:preflight": "node scripts/release-preflight.mjs",
+    "release:preflight:development": "node scripts/release-preflight.mjs --development",
+    "release:preflight:automated": "node scripts/release-preflight.mjs --automated",
+    "test:properties": "pnpm --filter @filescope/desktop test:properties && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked properties",
+    "check:readiness": "pnpm check:version && pnpm check:v040-readiness && pnpm test:properties"
   }
 }

@@ -6,6 +6,7 @@ on:
   push:
     branches: [develop]
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,14 +18,14 @@ concurrency:
 jobs:
   quality:
     name: Lint, типы, тесты и frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
 
@@ -43,6 +44,21 @@ jobs:
       - name: Проверить версии manifests и production UI
         run: pnpm check:version
 
+      - name: Проверить готовность архитектуры к v0.4.0
+        run: pnpm check:v040-readiness
+
+      - name: Проверить release preflight boundary
+        run: pnpm release:preflight:development
+
+      - name: Проверить зафиксированный automated release evidence
+        shell: bash
+        run: |
+          if test -f .github/release-evidence/v0.4.0.json; then
+            pnpm release:preflight:automated
+          else
+            echo 'Automated release evidence ещё не зафиксирован; development boundary уже проверен.'
+          fi
+
       - name: Проверить ESLint
         run: pnpm --filter @filescope/desktop lint
 
@@ -51,6 +67,9 @@ jobs:
 
       - name: Запустить unit-тесты
         run: pnpm --filter @filescope/desktop test
+
+      - name: Запустить быстрые property-тесты
+        run: pnpm --filter @filescope/desktop test:properties
 
       - name: Собрать frontend
         run: pnpm --filter @filescope/desktop build
@@ -63,7 +82,7 @@ jobs:
 
       - name: Сохранить отчёт Playwright при ошибке
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FileScope-Playwright-Report
           path: apps/desktop/playwright-report
@@ -77,10 +96,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Получить исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
 
@@ -88,8 +107,9 @@ jobs:
         run: npm install --global pnpm@10.14.0
 
       - name: Установить Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # pinned revision
         with:
+          toolchain: stable
           components: rustfmt
 
       - name: Установить фиксированные зависимости
@@ -101,11 +121,18 @@ jobs:
       - name: Проверить версии manifests и production UI
         run: pnpm check:version
 
+      - name: Проверить готовность архитектуры к v0.4.0
+        run: pnpm check:v040-readiness
+
+      - name: Проверить Windows history QA harness
+        shell: pwsh
+        run: ./scripts/windows-v040-history-qa.ps1 -Mode SelfTest
+
       - name: Проверить форматирование Rust
         working-directory: apps/desktop/src-tauri
         run: cargo fmt --all --check
 
-      - name: Запустить тесты Rust
+      - name: Запустить тесты Rust и property-инварианты
         working-directory: apps/desktop/src-tauri
         run: cargo test --locked
 
@@ -120,7 +147,7 @@ jobs:
         run: git diff --exit-code -- pnpm-lock.yaml apps/desktop/src-tauri/Cargo.lock
 
       - name: Сохранить установщик и исполняемый файл
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: FileScope-Windows-x64
           path: |

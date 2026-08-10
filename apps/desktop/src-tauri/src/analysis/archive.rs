@@ -1,7 +1,13 @@
-use std::{fs::File, path::PathBuf, time::Instant};
+use std::{
+    fs::{File, Metadata, OpenOptions},
+    io::{Read, Seek, SeekFrom},
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use chrono::Utc;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use zip::ZipArchive;
 
@@ -23,6 +29,7 @@ const ARCHIVE_EXTENSIONS: &[&str] = &["zip", "rar", "7z", "tar", "gz", "bz2", "x
 const DECOY_EXTENSIONS: &[&str] = &[
     "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "gif", "txt", "mp3", "mp4",
 ];
+const MAX_INDICATOR_EVIDENCE: usize = 30;
 
 pub fn analyze_zip(
     path: String,
@@ -33,16 +40,28 @@ pub fn analyze_zip(
     let started = Instant::now();
     let started_at = Utc::now();
     let file_path = PathBuf::from(&path);
-    let metadata = std::fs::symlink_metadata(&file_path).map_err(|error| {
-        AnalysisFailure::io(format!("Не удалось получить сведения об архиве: {error}"))
-    })?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+
+    if is_unc_path(&path) {
         return Err(AnalysisFailure::new(
             AnalysisFailureCode::UnsupportedObject,
-            "Для анализа архива требуется обычный локальный файл, а не каталог или ссылка.",
+            "UNC и сетевые пути не анализируются: удалённая файловая система не гарантирует локальную семантику identity и share mode.",
         ));
     }
-    if metadata.len() > limits.maximum_file_size_bytes || metadata.len() > limits.maximum_read_bytes
+    reject_special_path(&file_path)?;
+    let mut file = open_archive_for_analysis(&file_path)?;
+    let metadata_before = file.metadata().map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось получить сведения об открытом ZIP-архиве: {error}"
+        ))
+    })?;
+    if !metadata_before.is_file() || is_reparse_point(&metadata_before) {
+        return Err(AnalysisFailure::new(
+            AnalysisFailureCode::UnsupportedObject,
+            "Для анализа архива требуется обычный локальный файл, а не каталог, ссылка или reparse point.",
+        ));
+    }
+    if metadata_before.len() > limits.maximum_file_size_bytes
+        || metadata_before.len() > limits.maximum_read_bytes
     {
         return Err(AnalysisFailure::new(
             AnalysisFailureCode::ReadLimit,
@@ -55,13 +74,12 @@ pub fn analyze_zip(
         ));
     }
 
+    let sha256 = hash_open_archive(&mut file, token)?;
     let display_name = file_path
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("архив.zip")
         .to_string();
-    let file = File::open(&file_path)
-        .map_err(|error| AnalysisFailure::io(format!("Не удалось открыть ZIP-архив: {error}")))?;
     let mut archive = ZipArchive::new(file).map_err(|error| {
         AnalysisFailure::parse(format!(
             "Файл не является поддерживаемым ZIP-архивом: {error}"
@@ -75,21 +93,18 @@ pub fn analyze_zip(
     let mut nested_archives = 0_usize;
     let mut executable_entries = 0_usize;
     let mut suspicious_paths = 0_usize;
+    let mut double_extension_count = 0_usize;
+    let mut double_extension_evidence = Vec::new();
     let archive_count = archive.len();
 
     if archive_count > limits.maximum_archive_entries {
-        indicators.push(indicator(
+        indicators.push(limit_indicator(
             "archive.entries.limit-exceeded",
-            "Слишком много элементов в архиве",
-            "Количество записей превышает установленный защитный лимит.",
-            "limits",
-            IndicatorSeverity::High,
-            45,
+            "Количество элементов превышает лимит анализа",
             vec![
                 format!("Элементов: {archive_count}"),
-                format!("Лимит: {}", limits.maximum_archive_entries),
+                format!("Лимит анализа: {}", limits.maximum_archive_entries),
             ],
-            "Не распаковывайте архив обычным проводником и уточните его происхождение.",
         ));
     }
 
@@ -123,6 +138,12 @@ pub fn analyze_zip(
         if is_archive {
             nested_archives += 1;
         }
+        if has_double_extension(&name) {
+            double_extension_count += 1;
+            if double_extension_evidence.len() < MAX_INDICATOR_EVIDENCE {
+                double_extension_evidence.push(name.clone());
+            }
+        }
         maximum_depth = maximum_depth.max(depth);
         total_compressed = total_compressed.saturating_add(entry.compressed_size());
         total_uncompressed = total_uncompressed.saturating_add(entry.size());
@@ -131,19 +152,6 @@ pub fn analyze_zip(
             return Err(AnalysisFailure::new(
                 AnalysisFailureCode::MemoryLimit,
                 "Обход ZIP остановлен: заявленный распакованный объём превысил жёсткий ресурсный бюджет.",
-            ));
-        }
-
-        if has_double_extension(&name) {
-            indicators.push(indicator(
-                "archive.entry.double-extension",
-                "Файл внутри архива маскируется двойным расширением",
-                "Запись выглядит как документ или медиафайл, но заканчивается исполняемым расширением.",
-                "archive-entry",
-                IndicatorSeverity::Critical,
-                65,
-                vec![name.clone()],
-                "Не извлекайте и не запускайте этот файл.",
             ));
         }
 
@@ -160,16 +168,37 @@ pub fn analyze_zip(
     }
 
     token.checkpoint()?;
-    let compression_ratio = if total_compressed == 0 {
-        if total_uncompressed > 0 {
-            f64::INFINITY
-        } else {
-            1.0
-        }
-    } else {
-        total_uncompressed as f64 / total_compressed as f64
-    };
+    let file = archive.into_inner();
+    let metadata_after = file.metadata().map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось повторно проверить открытый ZIP-архив: {error}"
+        ))
+    })?;
+    if file_changed(&metadata_before, &metadata_after) {
+        return Err(AnalysisFailure::file_changed());
+    }
 
+    let (compression_ratio, compression_ratio_infinite) =
+        safe_compression_ratio(total_compressed, total_uncompressed);
+
+    if double_extension_count > 0 {
+        if double_extension_count > double_extension_evidence.len() {
+            double_extension_evidence.push(format!(
+                "…и ещё {} записей с двойным расширением",
+                double_extension_count - double_extension_evidence.len()
+            ));
+        }
+        indicators.push(indicator(
+            "archive.entry.double-extension",
+            "Файлы внутри архива маскируются двойным расширением",
+            "Одна или несколько записей выглядят как документы или медиафайлы, но заканчиваются исполняемым расширением.",
+            "archive-entry",
+            IndicatorSeverity::Critical,
+            65,
+            double_extension_evidence,
+            "Не извлекайте и не запускайте эти файлы.",
+        ));
+    }
     if suspicious_paths > 0 {
         indicators.push(indicator(
             "archive.path-traversal",
@@ -198,7 +227,7 @@ pub fn analyze_zip(
             entries
                 .iter()
                 .filter(|entry| entry.is_executable)
-                .take(30)
+                .take(MAX_INDICATOR_EVIDENCE)
                 .map(|entry| entry.path.clone())
                 .collect(),
             "Проверьте каждый исполняемый файл отдельно до извлечения и запуска.",
@@ -215,43 +244,41 @@ pub fn analyze_zip(
             entries
                 .iter()
                 .filter(|entry| entry.is_archive)
-                .take(30)
+                .take(MAX_INDICATOR_EVIDENCE)
                 .map(|entry| entry.path.clone())
                 .collect(),
             "Проверяйте вложенные архивы отдельно и соблюдайте ограничения глубины.",
         ));
     }
     if maximum_depth > limits.maximum_archive_depth {
-        indicators.push(indicator(
+        indicators.push(limit_indicator(
             "archive.depth.limit-exceeded",
-            "Слишком глубокая структура архива",
-            "Глубина каталогов превышает защитный лимит.",
-            "limits",
-            IndicatorSeverity::High,
-            38,
+            "Глубина структуры превышает лимит анализа",
             vec![
                 format!("Глубина: {maximum_depth}"),
-                format!("Лимит: {}", limits.maximum_archive_depth),
+                format!("Лимит анализа: {}", limits.maximum_archive_depth),
             ],
-            "Не распаковывайте архив автоматически.",
         ));
     }
     if total_uncompressed > limits.maximum_archive_uncompressed_bytes {
-        indicators.push(indicator(
+        indicators.push(limit_indicator(
             "archive.uncompressed-size.limit-exceeded",
-            "Распакованный объём превышает лимит",
-            "Суммарный заявленный размер содержимого слишком велик.",
-            "limits",
-            IndicatorSeverity::Critical,
-            65,
+            "Заявленный распакованный объём превышает лимит анализа",
             vec![
                 format!("Объём: {total_uncompressed} байт"),
-                format!("Лимит: {} байт", limits.maximum_archive_uncompressed_bytes),
+                format!(
+                    "Лимит анализа: {} байт",
+                    limits.maximum_archive_uncompressed_bytes
+                ),
             ],
-            "Не распаковывайте архив на основной системе.",
         ));
     }
-    if compression_ratio.is_infinite() || compression_ratio > limits.maximum_compression_ratio {
+    if compression_ratio_infinite || compression_ratio > limits.maximum_compression_ratio {
+        let evidence = if compression_ratio_infinite {
+            "Коэффициент: ∞ (compressed=0 при ненулевом uncompressed)".to_string()
+        } else {
+            format!("Коэффициент: {compression_ratio:.1}x")
+        };
         indicators.push(indicator(
             "archive.compression-ratio.suspicious",
             "Подозрительно высокая степень сжатия",
@@ -259,7 +286,7 @@ pub fn analyze_zip(
             "archive-bomb",
             IndicatorSeverity::Critical,
             72,
-            vec![format!("Коэффициент: {compression_ratio:.1}x")],
+            vec![evidence],
             "Не распаковывайте архив и удалите его, если источник не подтверждён.",
         ));
     }
@@ -280,6 +307,7 @@ pub fn analyze_zip(
         total_uncompressed_size: total_uncompressed,
         maximum_depth,
         compression_ratio,
+        compression_ratio_infinite,
         nested_archives,
         executable_entries,
         suspicious_paths,
@@ -300,9 +328,9 @@ pub fn analyze_zip(
         started_at: started_at.to_rfc3339(),
         completed_at: Utc::now().to_rfc3339(),
         duration_ms: started.elapsed().as_millis(),
-        sha256: None,
+        sha256: Some(sha256),
         detected_type: Some("ZIP archive".to_string()),
-        size_bytes: Some(metadata.len()),
+        size_bytes: Some(metadata_before.len()),
         risk_level,
         risk_score,
         indicators,
@@ -311,7 +339,21 @@ pub fn analyze_zip(
             "entriesRead": scan_count,
             "entryLimitApplied": scan_count < archive_count,
             "backendCancellation": true,
-            "jobTimeoutMs": limits.job_timeout_ms
+            "jobTimeoutMs": limits.job_timeout_ms,
+            "openedOnce": true,
+            "hashAndStructureSameHandle": true,
+            "identityCheck": "opened-handle-size-and-modified-time",
+            "reparsePointAllowed": false,
+            "windowsShareMode": "FILE_SHARE_READ only; write/delete sharing denied",
+            "networkPathPolicy": "UNC rejected",
+            "doubleExtensionCount": double_extension_count,
+            "indicatorEvidenceLimit": MAX_INDICATOR_EVIDENCE,
+            "appliedLimits": {
+                "maximumArchiveEntries": limits.maximum_archive_entries,
+                "maximumArchiveUncompressedBytes": limits.maximum_archive_uncompressed_bytes,
+                "maximumArchiveDepth": limits.maximum_archive_depth,
+                "maximumCompressionRatio": limits.maximum_compression_ratio
+            }
         }),
         pe: None,
         url: None,
@@ -322,6 +364,127 @@ pub fn analyze_zip(
             "RAR и 7Z распознаются как тип файла, но структурно пока не разбираются".to_string(),
         ],
     })
+}
+
+fn hash_open_archive(file: &mut File, token: &JobToken) -> Result<String, AnalysisFailure> {
+    file.seek(SeekFrom::Start(0)).map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось начать хеширование ZIP-контейнера: {error}"
+        ))
+    })?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        token.checkpoint()?;
+        let read = file.read(&mut buffer).map_err(|error| {
+            AnalysisFailure::io(format!("Ошибка чтения ZIP при вычислении SHA-256: {error}"))
+        })?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    file.seek(SeekFrom::Start(0)).map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось вернуть ZIP к началу после SHA-256: {error}"
+        ))
+    })?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn limit_indicator(id: &str, title: &str, evidence: Vec<String>) -> ThreatIndicator {
+    indicator(
+        id,
+        title,
+        "Защитный лимит ограничил полноту анализа. Сам факт остановки не является признаком вредоносности объекта.",
+        "analysis-status",
+        IndicatorSeverity::Info,
+        0,
+        evidence,
+        "Учитывайте неполноту отчёта и при необходимости повторите анализ с допустимым большим бюджетом для доверенного объекта.",
+    )
+}
+
+fn safe_compression_ratio(total_compressed: u64, total_uncompressed: u64) -> (f64, bool) {
+    if total_compressed == 0 {
+        return if total_uncompressed > 0 {
+            (0.0, true)
+        } else {
+            (1.0, false)
+        };
+    }
+    (total_uncompressed as f64 / total_compressed as f64, false)
+}
+
+#[cfg(windows)]
+fn open_archive_for_analysis(path: &Path) -> Result<File, AnalysisFailure> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ: u32 = 0x00000001;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
+    OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|error| {
+            AnalysisFailure::io(format!(
+                "Не удалось открыть ZIP для стабильного чтения: {error}"
+            ))
+        })
+}
+
+#[cfg(not(windows))]
+fn open_archive_for_analysis(path: &Path) -> Result<File, AnalysisFailure> {
+    OpenOptions::new().read(true).open(path).map_err(|error| {
+        AnalysisFailure::io(format!(
+            "Не удалось открыть ZIP для стабильного чтения: {error}"
+        ))
+    })
+}
+
+#[cfg(windows)]
+fn is_unc_path(path: &str) -> bool {
+    path.starts_with(r"\\") || path.starts_with("//")
+}
+
+#[cfg(not(windows))]
+fn is_unc_path(_path: &str) -> bool {
+    false
+}
+
+fn reject_special_path(path: &Path) -> Result<(), AnalysisFailure> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+        AnalysisFailure::io(format!("Не удалось проверить тип выбранного ZIP: {error}"))
+    })?;
+    if metadata.file_type().is_symlink() || is_reparse_point(&metadata) {
+        return Err(AnalysisFailure::new(
+            AnalysisFailureCode::UnsupportedObject,
+            "Ссылки, junction и другие reparse points не анализируются без отдельной безопасной политики.",
+        ));
+    }
+    if !metadata.is_file() {
+        return Err(AnalysisFailure::new(
+            AnalysisFailureCode::UnsupportedObject,
+            "Каталоги, устройства, named pipes и другие специальные объекты не поддерживаются.",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn is_reparse_point(metadata: &Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(_metadata: &Metadata) -> bool {
+    false
+}
+
+fn file_changed(before: &Metadata, after: &Metadata) -> bool {
+    before.len() != after.len() || before.modified().ok() != after.modified().ok()
 }
 
 fn has_double_extension(name: &str) -> bool {
@@ -338,18 +501,31 @@ fn has_double_extension(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{fs::File, io::Write, path::PathBuf};
 
-    use tempfile::NamedTempFile;
+    use tempfile::TempDir;
     use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
     use super::*;
     use crate::analysis::jobs::JobRegistry;
+    use crate::analysis::types::RiskLevel;
 
-    fn make_zip(entries: &[(&str, &[u8])]) -> NamedTempFile {
-        let file = NamedTempFile::new().unwrap();
+    struct ZipFixture {
+        _directory: TempDir,
+        path: PathBuf,
+    }
+
+    impl ZipFixture {
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    fn make_zip(entries: &[(&str, &[u8])]) -> ZipFixture {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("fixture.zip");
         {
-            let writer_file = file.reopen().unwrap();
+            let writer_file = File::create(&path).unwrap();
             let mut writer = ZipWriter::new(writer_file);
             let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
             for (name, contents) in entries {
@@ -358,7 +534,10 @@ mod tests {
             }
             writer.finish().unwrap();
         }
-        file
+        ZipFixture {
+            _directory: directory,
+            path,
+        }
     }
 
     #[test]
@@ -374,6 +553,9 @@ mod tests {
         .unwrap();
         assert_eq!(report.archive.unwrap().total_entries, 1);
         assert_eq!(report.metadata["contentExtractedToDisk"], false);
+        assert_eq!(report.metadata["openedOnce"], true);
+        assert_eq!(report.metadata["hashAndStructureSameHandle"], true);
+        assert_eq!(report.sha256.as_deref().map(str::len), Some(64));
     }
 
     #[test]
@@ -391,6 +573,75 @@ mod tests {
             .indicators
             .iter()
             .any(|item| item.id == "archive.entry.double-extension"));
+    }
+
+    #[test]
+    fn repeated_double_extensions_are_aggregated_and_bounded() {
+        let names = (0..64)
+            .map(|index| format!("invoice-{index}.pdf.exe"))
+            .collect::<Vec<_>>();
+        let entries = names
+            .iter()
+            .map(|name| (name.as_str(), b"MZ".as_slice()))
+            .collect::<Vec<_>>();
+        let file = make_zip(&entries);
+        let registry = JobRegistry::default();
+        let token = registry.start("zip-bounded", 30_000).unwrap();
+        let report = analyze_zip(
+            file.path().to_string_lossy().to_string(),
+            AnalysisLimits::default(),
+            &token,
+        )
+        .unwrap();
+        let matches = report
+            .indicators
+            .iter()
+            .filter(|item| item.id == "archive.entry.double-extension")
+            .collect::<Vec<_>>();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].evidence.len() <= MAX_INDICATOR_EVIDENCE + 1);
+        assert_eq!(report.metadata["doubleExtensionCount"], 64);
+    }
+
+    #[test]
+    fn entry_limit_marks_incomplete_without_creating_threat_score() {
+        let file = make_zip(&[("a.txt", b"a"), ("b.txt", b"b")]);
+        let registry = JobRegistry::default();
+        let token = registry.start("zip-limit", 30_000).unwrap();
+        let limits = AnalysisLimits {
+            maximum_archive_entries: 1,
+            ..AnalysisLimits::default()
+        };
+        let report =
+            analyze_zip(file.path().to_string_lossy().to_string(), limits, &token).unwrap();
+        assert_eq!(
+            report.analysis_completeness,
+            AnalysisCompleteness::StoppedByLimit
+        );
+        assert_eq!(report.risk_score, 0);
+        assert_eq!(report.risk_level, RiskLevel::NoThreatsFound);
+        assert!(report
+            .indicators
+            .iter()
+            .any(|item| { item.id == "archive.entries.limit-exceeded" && item.score == 0 }));
+    }
+
+    #[test]
+    fn infinite_compression_ratio_has_explicit_json_safe_state() {
+        let (ratio, infinite) = safe_compression_ratio(0, 10);
+        assert!(ratio.is_finite());
+        assert_eq!(ratio, 0.0);
+        assert!(infinite);
+
+        let value = ArchiveAnalysis {
+            compression_ratio: ratio,
+            compression_ratio_infinite: infinite,
+            ..ArchiveAnalysis::default()
+        };
+        let json = serde_json::to_string(&value).unwrap();
+        assert!(!json.contains("null"));
+        assert!(!json.contains("Infinity"));
+        assert!(json.contains("compressionRatioInfinite"));
     }
 
     #[test]
