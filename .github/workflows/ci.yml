@@ -50,6 +50,15 @@ jobs:
       - name: Проверить release preflight boundary
         run: pnpm release:preflight:development
 
+      - name: Проверить зафиксированный automated release evidence
+        shell: bash
+        run: |
+          if test -f .github/release-evidence/v0.4.0.json; then
+            pnpm release:preflight:automated
+          else
+            echo 'Automated release evidence ещё не зафиксирован; development boundary уже проверен.'
+          fi
+
       - name: Проверить ESLint
         run: pnpm --filter @filescope/desktop lint
 
