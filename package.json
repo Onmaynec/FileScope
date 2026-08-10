@@ -27,6 +27,7 @@
     "check:v040-readiness": "node scripts/check-v040-readiness.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
     "release:preflight:development": "node scripts/release-preflight.mjs --development",
+    "release:preflight:automated": "node scripts/release-preflight.mjs --automated",
     "test:properties": "pnpm --filter @filescope/desktop test:properties && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked properties",
     "check:readiness": "pnpm check:version && pnpm check:v040-readiness && pnpm test:properties"
   }
